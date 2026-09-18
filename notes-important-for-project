@@ -1,0 +1,2 @@
+Kafka: 
+- use group ids since when a consumer fails and has that group id it can resume from the last processed instead from the beginning
