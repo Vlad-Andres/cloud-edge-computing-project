@@ -2,4 +2,5 @@ Kafka:
 - use group ids since when a consumer fails and has that group id it can resume from the last processed instead from the beginning
 
 Kubernetes:
-- Use multiple notes on different machines like client14, group16, client4.. and maybe Sacha's other laptop
+- Use multiple notes on different machines like client14, group16, client4.. and maybe Sacha's other laptop. Not recommendend minikube for the assignment
+    - Advanced documentation in k8s under cec-tutorials
