@@ -14,11 +14,12 @@ docker run \
     --rm -d \
     --name postgres \
     --network cec \
-    -e POSTGRES_DB = groupdb \
-    -e POSTGRES_USER = groupdb \
-    -e POSTGRES_PASSWORD = admin \
+    -e POSTGRES_DB=groupdb \
+    -e POSTGRES_USER=groupdb \
+    -e POSTGRES_PASSWORD=admin \
     -v "$(pwd)/init.sql":/docker-entrypoint-initdb.d/init.sql \
     -v pgdata:/var/lib/postgresql/data \
+    -p 5432:5432 \
     postgres:16-alpine
 ```
 
@@ -28,7 +29,7 @@ docker run \
 - `--network cec` must match the network of `store-consumer` and later the REST API so they can reach this container by name (`POSTGRES_HOST=postgres`).
 
 ```bash
-docker exec -it postgres psql -U tempobs -d tempobs -c '\dt'
+docker exec -it postgres psql -U groupdb -d groupdb -c '\dt'
 ```
 
 ```bash
@@ -38,9 +39,9 @@ docker stop postgres
 ## .env
 
 ```
-POSTGRES_HOST = postgres
-POSTGRES_PORT = 5432
-POSTGRES_DB = groupdb
-POSTGRES_USER = groupdb
-POSTGRES_PASSWORD = admin
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=groupdb
+POSTGRES_USER=groupdb
+POSTGRES_PASSWORD=admin
 ```
