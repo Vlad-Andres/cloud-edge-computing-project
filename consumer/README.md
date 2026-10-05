@@ -41,7 +41,7 @@ docker run \
     --name store-consumer \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \
-    store-consumer-img "group1" "<consumer-group>"
+    store-consumer-img "group16" "<consumer-group>"
 ```
 
 ```bash
@@ -52,7 +52,7 @@ docker run \
     --name notify-consumer \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \
-    notify-consumer-img "group1" "<consumer-group>"
+    notify-consumer-img "group16" "<consumer-group>"
 ```
 
 | Argument | Value |
@@ -130,7 +130,7 @@ docker run \
     --name store-consumer \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \
-    store-consumer-img "experiment" "<consumer-group>"
+    store-consumer-img "experiment" "cg-1"
 ```
 
 ```bash
