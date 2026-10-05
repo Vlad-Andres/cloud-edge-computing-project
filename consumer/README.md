@@ -89,7 +89,7 @@ printf 'NOTIFICATIONS_TOKEN=%s\n\nPOSTGRES_HOST=\nPOSTGRES_PORT=\nPOSTGRES_DB=\n
 | Variable | Used by | Value |
 |---|---|---|
 | `NOTIFICATIONS_TOKEN` | notify-consumer | contents of `auth/token` |
-| `POSTGRES_*` | store-consumer | database connection, set once the database is ready (not read yet) |
+| `POSTGRES_*` | store-consumer | database connection — schema is set up (see [`../database/README.md`](../database/README.md)), store-consumer doesn't read these yet |
 
 - Keep `.env` and `auth/` out of git: they hold the token and the group keys.
 - Postgres in a container on the same host: `POSTGRES_HOST` is the DB container name, not `localhost`, and both containers need the same network:
