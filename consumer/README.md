@@ -127,6 +127,7 @@ docker run \
     --rm \
     -d \
     --init \
+    --network cec \
     --name store-consumer \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \
