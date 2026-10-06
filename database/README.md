@@ -17,7 +17,7 @@ docker run \
     -e POSTGRES_DB=groupdb \
     -e POSTGRES_USER=groupdb \
     -e POSTGRES_PASSWORD=admin \
-    -v "$(pwd)/init.sql":/docker-entrypoint-initdb.d/init.sql \
+    -v "$(pwd)/database/init.sql":/docker-entrypoint-initdb.d/init.sql \
     -v pgdata:/var/lib/postgresql/data \
     -p 5432:5432 \
     postgres:16-alpine
