@@ -107,15 +107,6 @@ docker network create cec
 
 Then add `--network cec` to both `docker run` commands.
 
-## Monitoring
-
-```bash
-docker compose --env-file .env -f monitoring/docker-compose.yml up -d
-```
-
-Open Grafana at <http://localhost:3000> and sign in with `admin` / `admin`.
-
-
 
 ## Test data with fake producer
 
