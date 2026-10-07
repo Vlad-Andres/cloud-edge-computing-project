@@ -24,7 +24,10 @@ ___
 ## Build
 
 ```bash
-docker build --build-arg BIN=store-consumer -t store-consumer-img consumer
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg BIN=store-consumer \
+  -t store-consumer-img \
+  consumer
 ```
 
 ```bash
