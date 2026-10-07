@@ -31,7 +31,10 @@ DOCKER_BUILDKIT=1 docker build \
 ```
 
 ```bash
-docker build --build-arg BIN=notify-consumer -t notify-consumer-img consumer
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg BIN=notify-consumer \
+  -t notify-consumer-img \
+  consumer
 ```
 
 ## Run
@@ -53,6 +56,7 @@ docker run \
     -d \
     --init \
     --name notify-consumer \
+    -p 9092:9091 \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \
     notify-consumer-img "group16" "<consumer-group>"
@@ -103,6 +107,14 @@ docker network create cec
 
 Then add `--network cec` to both `docker run` commands.
 
+## Monitoring
+
+```bash
+docker compose --env-file .env -f monitoring/docker-compose.yml up -d
+```
+
+Open Grafana at <http://localhost:3000> and sign in with `admin` / `admin`.
+
 
 
 ## Test data with fake producer
@@ -132,6 +144,7 @@ docker run \
     --init \
     --network cec \
     --name store-consumer \
+    -p 9091:9091 \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \
     store-consumer-img "experiment" "cg-1"

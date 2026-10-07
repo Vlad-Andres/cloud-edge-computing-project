@@ -4,6 +4,7 @@ use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::message::Headers;
 use rdkafka::Message;
+use prometheus::{IntCounter, register_int_counter};
 use std::error::Error;
 use std::time::Duration;
 
@@ -18,7 +19,31 @@ pub struct KafkaArgs {
     brokers: String,
 }
 
-pub fn consume(args: &KafkaArgs, mut handle: impl FnMut(Event)) -> Result<(), Box<dyn Error>> {
+pub struct KafkaMetrics {
+    pub messages: IntCounter,
+    pub decode_errors: IntCounter,
+}
+
+impl KafkaMetrics {
+    pub fn new() -> Self {
+        Self {
+            messages: register_int_counter!(
+                "kafka_messages_consumed_total",
+                "Kafka messages successfully decoded and passed to the consumer"
+            ).expect("register kafka_messages_consumed_total"),
+            decode_errors: register_int_counter!(
+                "kafka_decode_errors_total",
+                "Kafka messages that could not be decoded"
+            ).expect("register kafka_decode_errors_total"),
+        }
+    }
+}
+
+pub fn consume(
+    args: &KafkaArgs,
+    metrics: &KafkaMetrics,
+    mut handle: impl FnMut(Event),
+) -> Result<(), Box<dyn Error>> {
     let consumer: BaseConsumer = ClientConfig::new()
         .set("bootstrap.servers", &args.brokers)
         .set("group.id", &args.consumer_group)
@@ -48,8 +73,14 @@ pub fn consume(args: &KafkaArgs, mut handle: impl FnMut(Event)) -> Result<(), Bo
                     .unwrap_or_default();
 
                 match Event::decode(&record_name, message.payload().unwrap_or_default()) {
-                    Ok(event) => handle(event),
-                    Err(error) => eprintln!("Decode error ({record_name}): {error}"),
+                    Ok(event) => {
+                        metrics.messages.inc();
+                        handle(event);
+                    }
+                    Err(error) => {
+                        metrics.decode_errors.inc();
+                        eprintln!("Decode error ({record_name}): {error}");
+                    }
                 }
             }
             Some(Err(error)) => eprintln!("Consumer error: {error}"),

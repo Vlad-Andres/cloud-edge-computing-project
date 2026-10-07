@@ -2,7 +2,9 @@ use consumer::events::{Event, SensorTemperatureMeasured};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::thread;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use prometheus::{HistogramVec, register_histogram_vec};
 use ureq::Agent;
 
 #[derive(Debug, Serialize)]
@@ -35,10 +37,27 @@ pub struct Notifier {
     url: String,
     token: String,
     experiments: HashMap<String, Experiment>,
+    metrics: Arc<NotifierMetrics>,
+}
+
+pub struct NotifierMetrics {
+    pub request_latency: HistogramVec,
+}
+
+impl NotifierMetrics {
+    pub fn new() -> Self {
+        Self {
+            request_latency: register_histogram_vec!(
+                "notify_request_duration_seconds",
+                "Notification HTTP request duration in seconds",
+                &["notification_type"]
+            ).expect("register notify_request_duration_seconds"),
+        }
+    }
 }
 
 impl Notifier {
-    pub fn new(url: String, token: String) -> Self {
+    pub fn new(url: String, token: String, metrics: Arc<NotifierMetrics>) -> Self {
         let agent = Agent::config_builder()
             .http_status_as_error(false)
             .timeout_global(Some(Duration::from_secs(5)))
@@ -49,6 +68,7 @@ impl Notifier {
             url,
             token,
             experiments: HashMap::new(),
+            metrics,
         }
     }
 
@@ -119,8 +139,15 @@ impl Notifier {
     }
 
     fn send(&self, notification: Notification) {
-        let (agent, url, token) = (self.agent.clone(), self.url.clone(), self.token.clone());
+        let (agent, url, token, metrics) = (
+            self.agent.clone(),
+            self.url.clone(),
+            self.token.clone(),
+            Arc::clone(&self.metrics),
+        );
         thread::spawn(move || {
+            let notification_type = format!("{:?}", notification.notification_type);
+            let timer = Instant::now();
             match agent.post(&url).query("token", &token).send_json(&notification) {
                 Ok(mut response) => println!(
                     "{:?} {} -> {} {}",
@@ -131,6 +158,9 @@ impl Notifier {
                 ),
                 Err(error) => eprintln!("Notify error ({}): {error}", notification.measurement_id),
             }
+            metrics.request_latency
+                .with_label_values(&[&notification_type])
+                .observe(timer.elapsed().as_secs_f64());
         });
     }
 }
