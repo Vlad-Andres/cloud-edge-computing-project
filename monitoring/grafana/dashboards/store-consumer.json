@@ -1,7 +1,7 @@
 {
   "title": "Store consumer",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "panels": [
     {
       "type": "timeseries",
@@ -9,7 +9,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum by (operation) (rate(store_db_requests_total[1m]))",
+          "expr": "sum by (operation) (rate(store_db_requests_total[1m])) > 0.001",
           "legendFormat": "{{operation}}"
         }
       ]
@@ -20,7 +20,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(store_db_request_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(store_db_request_duration_seconds_bucket[5m]))) and on (operation) (sum by (operation) (rate(store_db_requests_total[1m])) > 0.001)",
           "legendFormat": "{{operation}}"
         }
       ],
@@ -32,7 +32,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "sum by (operation) (rate(store_db_errors_total[1m]))",
+          "expr": "sum by (operation) (rate(store_db_errors_total[1m])) > 0.001",
           "legendFormat": "{{operation}}"
         }
       ]
@@ -43,21 +43,28 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
-          "expr": "pg_stat_database_numbackends",
+          "expr": "pg_stat_database_numbackends{datname=\"groupdb\"}",
           "legendFormat": "{{datname}}"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Incoming Kafka messages",
+      "title": "Consumer event load (events/sec)",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "targets": [
         {
           "expr": "sum by (job) (rate(kafka_messages_consumed_total[1m]))",
           "legendFormat": "{{job}}"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2
+        }
+      },
+      "description": "Decoded Kafka messages per second, calculated from the cumulative kafka_messages_consumed_total counter."
     },
     {
       "type": "timeseries",
@@ -65,10 +72,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "targets": [
         {
-          "expr": "sum by (job) (rate(kafka_decode_errors_total[1m]))",
+          "expr": "sum by (job) (rate(kafka_decode_errors_total[1m])) > 0.001",
           "legendFormat": "{{job}}"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2
+        }
+      },
+      "description": "Kafka decode errors per second."
     },
     {
       "type": "timeseries",

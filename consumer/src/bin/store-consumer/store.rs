@@ -135,6 +135,9 @@ impl Store {
                 "skipped sensor_temperature_measured (duplicate or unknown experiment: {})",
                 reading.experiment
             ),
+            Ok(rows) => println!(
+                "stored sensor_temperature_measured ({rows} rows affected)"
+            ),
             Err(error) => {
                 self.metrics.db_errors.with_label_values(&["measurement"]).inc();
                 eprintln!("DB error (sensor_temperature_measured): {error}");
