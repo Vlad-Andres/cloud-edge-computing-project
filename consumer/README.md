@@ -155,6 +155,7 @@ docker run \
     --rm \
     -d \
     --init \
+    --network cec \
     --name notify-consumer \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \

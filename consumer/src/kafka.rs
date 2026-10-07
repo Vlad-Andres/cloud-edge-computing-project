@@ -4,7 +4,7 @@ use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::message::Headers;
 use rdkafka::Message;
-use prometheus::{IntCounter, register_int_counter};
+use prometheus::{IntCounter, IntCounterVec, register_int_counter, register_int_counter_vec};
 use std::error::Error;
 use std::time::Duration;
 
@@ -21,6 +21,7 @@ pub struct KafkaArgs {
 
 pub struct KafkaMetrics {
     pub messages: IntCounter,
+    pub messages_by_event: IntCounterVec,
     pub decode_errors: IntCounter,
 }
 
@@ -31,6 +32,11 @@ impl KafkaMetrics {
                 "kafka_messages_consumed_total",
                 "Kafka messages successfully decoded and passed to the consumer"
             ).expect("register kafka_messages_consumed_total"),
+            messages_by_event: register_int_counter_vec!(
+                "kafka_events_consumed_total",
+                "Kafka events successfully decoded by event type",
+                &["event_type"]
+            ).expect("register kafka_events_consumed_total"),
             decode_errors: register_int_counter!(
                 "kafka_decode_errors_total",
                 "Kafka messages that could not be decoded"
@@ -75,6 +81,10 @@ pub fn consume(
                 match Event::decode(&record_name, message.payload().unwrap_or_default()) {
                     Ok(event) => {
                         metrics.messages.inc();
+                        metrics
+                            .messages_by_event
+                            .with_label_values(&[&record_name])
+                            .inc();
                         handle(event);
                     }
                     Err(error) => {

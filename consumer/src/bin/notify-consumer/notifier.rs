@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::thread;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use prometheus::{HistogramVec, register_histogram_vec};
 use ureq::Agent;
 
@@ -41,17 +41,17 @@ pub struct Notifier {
 }
 
 pub struct NotifierMetrics {
-    pub request_latency: HistogramVec,
+    pub service_latency: HistogramVec,
 }
 
 impl NotifierMetrics {
     pub fn new() -> Self {
         Self {
-            request_latency: register_histogram_vec!(
-                "notify_request_duration_seconds",
-                "Notification HTTP request duration in seconds",
+            service_latency: register_histogram_vec!(
+                "notify_service_latency_seconds",
+                "Notification service reported latency in seconds",
                 &["notification_type"]
-            ).expect("register notify_request_duration_seconds"),
+            ).expect("register notify_service_latency_seconds"),
         }
     }
 }
@@ -147,20 +147,30 @@ impl Notifier {
         );
         thread::spawn(move || {
             let notification_type = format!("{:?}", notification.notification_type);
-            let timer = Instant::now();
             match agent.post(&url).query("token", &token).send_json(&notification) {
-                Ok(mut response) => println!(
-                    "{:?} {} -> {} {}",
-                    notification.notification_type,
-                    notification.measurement_id,
-                    response.status(),
-                    response.body_mut().read_to_string().unwrap_or_default()
-                ),
+                Ok(mut response) => {
+                    let status = response.status();
+                    let body = response.body_mut().read_to_string().unwrap_or_default();
+                    println!(
+                        "{:?} {} -> {} {}",
+                        notification.notification_type,
+                        notification.measurement_id,
+                        status,
+                        body
+                    );
+                    match body.trim().parse::<f64>() {
+                        Ok(latency) => metrics
+                            .service_latency
+                            .with_label_values(&[&notification_type])
+                            .observe(latency),
+                        Err(error) => eprintln!(
+                            "Invalid notification latency ({}, body `{body}`): {error}",
+                            notification.measurement_id
+                        ),
+                    }
+                }
                 Err(error) => eprintln!("Notify error ({}): {error}", notification.measurement_id),
             }
-            metrics.request_latency
-                .with_label_values(&[&notification_type])
-                .observe(timer.elapsed().as_secs_f64());
         });
     }
 }

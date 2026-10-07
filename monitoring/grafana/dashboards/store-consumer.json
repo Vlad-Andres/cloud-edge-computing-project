@@ -1,7 +1,7 @@
 {
   "title": "Store consumer",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 5,
   "panels": [
     {
       "type": "timeseries",
@@ -58,39 +58,41 @@
           "legendFormat": "{{job}}"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "decimals": 2
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+      "description": "All decoded Kafka events per second for each consumer."
+    },
+    {
+      "type": "timeseries",
+      "title": "Event types received (events/sec)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum by (job, event_type) (rate(kafka_events_consumed_total[1m]))",
+          "legendFormat": "{{job}} — {{event_type}}"
         }
-      },
-      "description": "Decoded Kafka messages per second, calculated from the cumulative kafka_messages_consumed_total counter."
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+      "description": "Decoded Kafka event rate grouped by event type and consumer."
     },
     {
       "type": "timeseries",
       "title": "Kafka decode errors",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "targets": [
         {
           "expr": "sum by (job) (rate(kafka_decode_errors_total[1m])) > 0.001",
           "legendFormat": "{{job}}"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "decimals": 2
-        }
-      },
-      "description": "Kafka decode errors per second."
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } }
     },
     {
       "type": "timeseries",
-      "title": "Notifier request latency (p95)",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "title": "Notification service latency (p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, job, notification_type) (rate(notify_request_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, job, notification_type) (rate(notify_service_latency_seconds_bucket[5m])))",
           "legendFormat": "{{job}} {{notification_type}}"
         }
       ],
