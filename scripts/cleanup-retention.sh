@@ -13,7 +13,7 @@ docker exec "$POSTGRES_CONTAINER" psql \
     -d "$POSTGRES_DB" \
     -v ON_ERROR_STOP=1 \
     -c "DELETE FROM measurements
-        WHERE timestamp < extract(epoch FROM now() - interval '2 days');"
+        WHERE timestamp < extract(epoch FROM now() - interval '1 days');"
 
 docker exec "$POSTGRES_CONTAINER" psql \
     -U "$POSTGRES_USER" \
