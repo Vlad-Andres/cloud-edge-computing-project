@@ -37,39 +37,6 @@ DOCKER_BUILDKIT=1 docker build \
   consumer
 ```
 
-## Run
-
-```bash
-docker run \
-    --rm \
-    -d \
-    --init \
-    --name store-consumer \
-    --env-file .env \
-    -v "$(pwd)/auth":/usr/src/app/auth \
-    store-consumer-img "group16" "<consumer-group>"
-```
-
-```bash
-docker run \
-    --rm \
-    -d \
-    --init \
-    --name notify-consumer \
-    -p 9092:9091 \
-    --env-file .env \
-    -v "$(pwd)/auth":/usr/src/app/auth \
-    notify-consumer-img "group16" "<consumer-group>"
-```
-
-| Argument | Value |
-|---|---|
-| `<topic>` | `experiment` (assignment, read-only) or your group topic |
-| `<consumer-group>` | one per consumer type, shared by its containers, e.g. `group16-store`, `group16-notify` |
-| `-b, --brokers <list>` | optional, default `kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092` |
-| `--token <token>` | notify-consumer only, default `NOTIFICATIONS_TOKEN` from `.env` |
-| `--notifications-url <url>` | notify-consumer only, default `https://notifications.cec.dlandau.nl/api/notify` |
-
 ```bash
 docker logs -f store-consumer
 ```

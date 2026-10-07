@@ -1,4 +1,5 @@
 use consumer::events::{Event, ExperimentConfigured, SensorTemperatureMeasured, StageChange};
+use consumer::kafka::HANDLE_BUCKETS;
 use postgres::Client;
 use prometheus::{HistogramVec, IntCounterVec, register_histogram_vec, register_int_counter_vec};
 use std::sync::Arc;
@@ -25,7 +26,8 @@ impl Metrics {
             db_latency: register_histogram_vec!(
                 "store_db_request_duration_seconds",
                 "Database request duration in seconds",
-                &["operation"]
+                &["operation"],
+                HANDLE_BUCKETS.to_vec()
             ).expect("register store_db_request_duration_seconds"),
         }
     }
