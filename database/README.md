@@ -45,3 +45,9 @@ POSTGRES_DB=groupdb
 POSTGRES_USER=groupdb
 POSTGRES_PASSWORD=admin
 ```
+
+
+## How to check the size that db is occupying
+```sh
+docker system df -v | grep -A 2 pgdata
+```
