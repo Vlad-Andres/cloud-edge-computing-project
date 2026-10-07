@@ -1,0 +1,41 @@
+[
+  {
+    "start_time": 0,
+    "researcher": "stress-test@example.invalid",
+    "num_sensors": 8,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 10,
+    "carry_out_samples": 50,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 30,
+    "researcher": "stress-test@example.invalid",
+    "num_sensors": 16,
+    "sample_rate": 250,
+    "start_temperature": 20,
+    "stabilization_samples": 10,
+    "carry_out_samples": 80,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 75,
+    "researcher": "stress-test@example.invalid",
+    "num_sensors": 24,
+    "sample_rate": 500,
+    "start_temperature": 20,
+    "stabilization_samples": 10,
+    "carry_out_samples": 100,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  }
+]
