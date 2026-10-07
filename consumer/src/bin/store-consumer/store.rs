@@ -113,41 +113,28 @@ impl Store {
 
     fn save_sensor_temperature_measured(&mut self, reading: SensorTemperatureMeasured) {
         let timer = self.db_timer("measurement");
-        let thresholds = self.db.query_one(
-            "SELECT lower_threshold, upper_threshold
-             FROM experiments
-             WHERE experiment_id = $1",
-            &[&reading.experiment],
-        );
-        let thresholds = match thresholds {
-            Ok(row) => (row.get::<_, f64>(0), row.get::<_, f64>(1)),
-            Err(error) => {
-                self.metrics.db_errors.with_label_values(&["measurement"]).inc();
-                eprintln!(
-                    "DB error (lookup experiment {} for measurement {}): {error}",
-                    reading.experiment, reading.measurement_id
-                );
-                timer.observe_duration();
-                return;
-            }
-        };
         let temperature = f64::from(reading.temperature);
-        let out_of_range = temperature < thresholds.0 || temperature > thresholds.1;
         let result = self.db.execute(
             "INSERT INTO measurements
                 (measurement_id, experiment_id, timestamp, temperature, out_of_range)
-             VALUES ($1, $2, $3, $4, $5)
+             SELECT $1, experiment_id, $3, $4,
+                    $4 < lower_threshold OR $4 > upper_threshold
+             FROM experiments
+             WHERE experiment_id = $2
              ON CONFLICT (measurement_id) DO NOTHING",
             &[
                 &reading.measurement_id,
                 &reading.experiment,
                 &reading.timestamp,
                 &temperature,
-                &out_of_range,
             ],
         );
         match result {
-            Ok(_) => println!("stored sensor_temperature_measured"),
+            Ok(1) => println!("stored sensor_temperature_measured"),
+            Ok(0) => println!(
+                "skipped sensor_temperature_measured (duplicate or unknown experiment: {})",
+                reading.experiment
+            ),
             Err(error) => {
                 self.metrics.db_errors.with_label_values(&["measurement"]).inc();
                 eprintln!("DB error (sensor_temperature_measured): {error}");
