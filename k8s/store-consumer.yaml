@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-consumer
+  labels:
+    app: store-consumer
+spec:
+  # One per partition of the experiment topic
+  replicas: 4
+  selector:
+    matchLabels:
+      app: store-consumer
+  template:
+    metadata:
+      labels:
+        app: store-consumer
+    spec:
+      enableServiceLinks: false
+      # The consumer doesn't handle SIGTERM; as PID 1 it would ignore it.
+      # Sharing the pod's process namespace plays the role of docker --init.
+      shareProcessNamespace: true
+      # Spread over the nodes when possible (2/2 on two, 2/1/1 on three),
+      # but still schedule when a node is down
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: store-consumer
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command: ["sh", "-c", "until pg_isready -h postgres -p 5432; do sleep 2; done"]
+      containers:
+        - name: store-consumer
+          image: store-consumer
+          args: ["experiment", "group16-store"]
+          envFrom:
+            - secretRef:
+                name: app-env
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          ports:
+            - name: metrics
+              containerPort: 9091
+          volumeMounts:
+            # The binary reads auth/ca.crt relative to its workdir
+            - name: kafka-auth
+              mountPath: /usr/src/app/auth
+              readOnly: true
+      volumes:
+        - name: kafka-auth
+          secret:
+            secretName: kafka-auth

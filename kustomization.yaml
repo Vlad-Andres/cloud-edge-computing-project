@@ -1,0 +1,56 @@
+# Deploys the whole project to Kubernetes: kubectl apply -k .
+# Lives in the repo root so the generators can read the existing files
+# (database/, monitoring/, .env, auth/) without copying them.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cec
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/postgres.yaml
+  - k8s/store-consumer.yaml
+  - k8s/notify-consumer.yaml
+  - k8s/rest-api.yaml
+  - k8s/retention-cronjob.yaml
+  - k8s/monitoring/prometheus.yaml
+  - k8s/monitoring/grafana.yaml
+  - k8s/monitoring/postgres-exporter.yaml
+
+images:
+  - name: store-consumer
+    newName: vladandres/store-consumer
+    newTag: latest
+  - name: notify-consumer
+    newName: vladandres/notify-consumer
+    newTag: latest
+  - name: rest-api
+    newName: vladandres/rest-api
+    newTag: latest
+
+# .env and auth/ are gitignored; they must exist on the machine running kubectl
+secretGenerator:
+  - name: app-env
+    envs:
+      - .env
+  - name: kafka-auth
+    files:
+      - auth/ca.crt
+      - auth/kafka.keystore.pkcs12
+
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - database/init.sql
+  - name: prometheus-config
+    files:
+      - k8s/monitoring/prometheus.yml
+  - name: grafana-datasources
+    files:
+      - monitoring/grafana/provisioning/datasources/prometheus.yml
+  - name: grafana-dashboard-providers
+    files:
+      - monitoring/grafana/provisioning/dashboards/dashboards.yml
+  - name: grafana-dashboards
+    files:
+      - monitoring/grafana/dashboards/store-consumer.json

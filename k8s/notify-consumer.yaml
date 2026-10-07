@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notify-consumer
+  labels:
+    app: notify-consumer
+spec:
+  replicas: 1
+  # Never run two at once: experiment state is kept in memory
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: notify-consumer
+  template:
+    metadata:
+      labels:
+        app: notify-consumer
+    spec:
+      enableServiceLinks: false
+      # Same as store-consumer: lets SIGTERM stop the process (docker --init)
+      shareProcessNamespace: true
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: notify-consumer
+          image: notify-consumer
+          args: ["experiment", "group16-notify"]
+          envFrom:
+            - secretRef:
+                name: app-env
+          ports:
+            - name: metrics
+              containerPort: 9091
+          volumeMounts:
+            - name: kafka-auth
+              mountPath: /usr/src/app/auth
+              readOnly: true
+      volumes:
+        - name: kafka-auth
+          secret:
+            secretName: kafka-auth

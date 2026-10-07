@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rest-api
+  labels:
+    app: rest-api
+spec:
+  selector:
+    app: rest-api
+  ports:
+    - name: http
+      port: 3003
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rest-api
+  labels:
+    app: rest-api
+spec:
+  replicas: 1
+  # A hostPort pod can't surge next to the old one on the same node
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: rest-api
+  template:
+    metadata:
+      labels:
+        app: rest-api
+    spec:
+      enableServiceLinks: false
+      # Pinned to the control-plane node, which owns the public IP 52.209.7.51
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: rest-api
+          image: rest-api
+          envFrom:
+            - secretRef:
+                name: app-env
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          ports:
+            # hostPort exposes it as 52.209.7.51:3003 (NodePort can't use 3003)
+            - name: http
+              containerPort: 3003
+              hostPort: 3003
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
