@@ -24,44 +24,18 @@ ___
 ## Build
 
 ```bash
-docker build --build-arg BIN=store-consumer -t store-consumer-img consumer
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg BIN=store-consumer \
+  -t store-consumer-img \
+  consumer
 ```
 
 ```bash
-docker build --build-arg BIN=notify-consumer -t notify-consumer-img consumer
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg BIN=notify-consumer \
+  -t notify-consumer-img \
+  consumer
 ```
-
-## Run
-
-```bash
-docker run \
-    --rm \
-    -d \
-    --init \
-    --name store-consumer \
-    --env-file .env \
-    -v "$(pwd)/auth":/usr/src/app/auth \
-    store-consumer-img "group1" "<consumer-group>"
-```
-
-```bash
-docker run \
-    --rm \
-    -d \
-    --init \
-    --name notify-consumer \
-    --env-file .env \
-    -v "$(pwd)/auth":/usr/src/app/auth \
-    notify-consumer-img "group1" "<consumer-group>"
-```
-
-| Argument | Value |
-|---|---|
-| `<topic>` | `experiment` (assignment, read-only) or your group topic |
-| `<consumer-group>` | one per consumer type, shared by its containers, e.g. `group16-store`, `group16-notify` |
-| `-b, --brokers <list>` | optional, default `kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092` |
-| `--token <token>` | notify-consumer only, default `NOTIFICATIONS_TOKEN` from `.env` |
-| `--notifications-url <url>` | notify-consumer only, default `https://notifications.cec.dlandau.nl/api/notify` |
 
 ```bash
 docker logs -f store-consumer
@@ -101,7 +75,6 @@ docker network create cec
 Then add `--network cec` to both `docker run` commands.
 
 
-
 ## Test data with fake producer
 
 ```bash
@@ -127,10 +100,12 @@ docker run \
     --rm \
     -d \
     --init \
+    --network cec \
     --name store-consumer \
+    -p 9091:9091 \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \
-    store-consumer-img "experiment" "<consumer-group>"
+    store-consumer-img "experiment" "cg-1"
 ```
 
 ```bash
@@ -138,6 +113,7 @@ docker run \
     --rm \
     -d \
     --init \
+    --network cec \
     --name notify-consumer \
     --env-file .env \
     -v "$(pwd)/auth":/usr/src/app/auth \

@@ -1,0 +1,100 @@
+services:
+  # 80 events/s for about 0.75 s. Expected peak: 80 events/s.
+  baseline-producer:
+    image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
+    profiles: [baseline]
+    init: true
+    restart: "no"
+    volumes:
+      - ${AUTH_DIR:-../../auth}:/experiment-producer/auth:ro
+      - ./loads/baseline.json:/config.json:ro
+    command:
+      - --brokers
+      - ${BROKERS:-kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092}
+      - --topic
+      - ${TOPIC:?Set TOPIC to the writable Kafka topic}
+      - --config-file
+      - /config.json
+
+  # 80, 64, then 48 events/s. Expected peak: 80 events/s.
+  ramp-producer:
+    image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
+    profiles: [ramp]
+    init: true
+    restart: "no"
+    volumes:
+      - ${AUTH_DIR:-../../auth}:/experiment-producer/auth:ro
+      - ./loads/ramp.json:/config.json:ro
+    command:
+      - --brokers
+      - ${BROKERS:-kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092}
+      - --topic
+      - ${TOPIC:?Set TOPIC to the writable Kafka topic}
+      - --config-file
+      - /config.json
+
+  # Four stages at 40 events/s each. Expected peak: 120 events/s.
+  burst-producer:
+    image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
+    profiles: [burst]
+    init: true
+    restart: "no"
+    volumes:
+      - ${AUTH_DIR:-../../auth}:/experiment-producer/auth:ro
+      - ./loads/burst.json:/config.json:ro
+    command:
+      - --brokers
+      - ${BROKERS:-kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092}
+      - --topic
+      - ${TOPIC:?Set TOPIC to the writable Kafka topic}
+      - --config-file
+      - /config.json
+
+  # One stage at 200 events/s for about 62 s.
+  over-100-producer:
+    image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
+    profiles: [over-100]
+    init: true
+    restart: "no"
+    volumes:
+      - ${AUTH_DIR:-../../auth}:/experiment-producer/auth:ro
+      - ./loads/over-100.json:/config.json:ro
+    command:
+      - --brokers
+      - ${BROKERS:-kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092}
+      - --topic
+      - ${TOPIC:?Set TOPIC to the writable Kafka topic}
+      - --config-file
+      - /config.json
+
+  const-500-producer:
+    image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
+    profiles: [const-500]
+    init: true
+    restart: "no"
+    volumes:
+      - ${AUTH_DIR:-../../auth}:/experiment-producer/auth:ro
+      - ./loads/constant-500.json:/config.json:ro
+    command:
+      - --brokers
+      - ${BROKERS:-kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092}
+      - --topic
+      - ${TOPIC:?Set TOPIC to the writable Kafka topic}
+      - --config-file
+      - /config.json
+
+  const-1000-producer:
+    image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
+    profiles: [const-1000]
+    init: true
+    restart: "no"
+    volumes:
+      - ${AUTH_DIR:-../../auth}:/experiment-producer/auth:ro
+      - ./loads/constant-1000ps.json:/config.json:ro
+    command:
+      - --brokers
+      - ${BROKERS:-kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092}
+      - --topic
+      - ${TOPIC:?Set TOPIC to the writable Kafka topic}
+      - --config-file
+      - /config.json 

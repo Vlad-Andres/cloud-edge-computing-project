@@ -2,7 +2,9 @@ use consumer::events::{Event, SensorTemperatureMeasured};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::thread;
+use std::sync::Arc;
 use std::time::Duration;
+use prometheus::{HistogramVec, register_histogram_vec};
 use ureq::Agent;
 
 #[derive(Debug, Serialize)]
@@ -35,10 +37,27 @@ pub struct Notifier {
     url: String,
     token: String,
     experiments: HashMap<String, Experiment>,
+    metrics: Arc<NotifierMetrics>,
+}
+
+pub struct NotifierMetrics {
+    pub service_latency: HistogramVec,
+}
+
+impl NotifierMetrics {
+    pub fn new() -> Self {
+        Self {
+            service_latency: register_histogram_vec!(
+                "notify_service_latency_seconds",
+                "Notification service reported latency in seconds",
+                &["notification_type"]
+            ).expect("register notify_service_latency_seconds"),
+        }
+    }
 }
 
 impl Notifier {
-    pub fn new(url: String, token: String) -> Self {
+    pub fn new(url: String, token: String, metrics: Arc<NotifierMetrics>) -> Self {
         let agent = Agent::config_builder()
             .http_status_as_error(false)
             .timeout_global(Some(Duration::from_secs(5)))
@@ -49,6 +68,7 @@ impl Notifier {
             url,
             token,
             experiments: HashMap::new(),
+            metrics,
         }
     }
 
@@ -119,16 +139,36 @@ impl Notifier {
     }
 
     fn send(&self, notification: Notification) {
-        let (agent, url, token) = (self.agent.clone(), self.url.clone(), self.token.clone());
+        let (agent, url, token, metrics) = (
+            self.agent.clone(),
+            self.url.clone(),
+            self.token.clone(),
+            Arc::clone(&self.metrics),
+        );
         thread::spawn(move || {
+            let notification_type = format!("{:?}", notification.notification_type);
             match agent.post(&url).query("token", &token).send_json(&notification) {
-                Ok(mut response) => println!(
-                    "{:?} {} -> {} {}",
-                    notification.notification_type,
-                    notification.measurement_id,
-                    response.status(),
-                    response.body_mut().read_to_string().unwrap_or_default()
-                ),
+                Ok(mut response) => {
+                    let status = response.status();
+                    let body = response.body_mut().read_to_string().unwrap_or_default();
+                    println!(
+                        "{:?} {} -> {} {}",
+                        notification.notification_type,
+                        notification.measurement_id,
+                        status,
+                        body
+                    );
+                    match body.trim().parse::<f64>() {
+                        Ok(latency) => metrics
+                            .service_latency
+                            .with_label_values(&[&notification_type])
+                            .observe(latency),
+                        Err(error) => eprintln!(
+                            "Invalid notification latency ({}, body `{body}`): {error}",
+                            notification.measurement_id
+                        ),
+                    }
+                }
                 Err(error) => eprintln!("Notify error ({}): {error}", notification.measurement_id),
             }
         });

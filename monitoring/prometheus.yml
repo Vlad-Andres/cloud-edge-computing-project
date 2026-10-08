@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: store-consumer
+    static_configs:
+      - targets: ["store-consumer:9091"]
+
+  - job_name: notify-consumer
+    static_configs:
+      - targets: ["notify-consumer:9091"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
