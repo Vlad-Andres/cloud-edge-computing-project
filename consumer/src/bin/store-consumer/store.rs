@@ -118,17 +118,17 @@ impl Store {
         let temperature = f64::from(reading.temperature);
         let result = self.db.execute(
             "INSERT INTO measurements
-                (measurement_id, experiment_id, timestamp, temperature, out_of_range)
-             SELECT $1, experiment_id, $3, $4,
-                    $4 < lower_threshold OR $4 > upper_threshold
+                (measurement_id, sensor_id, experiment_id, timestamp, temperature)
+             SELECT $1, $5, experiment_id, $3, $4
              FROM experiments
              WHERE experiment_id = $2
-             ON CONFLICT (measurement_id) DO NOTHING",
+             ON CONFLICT (measurement_id, sensor_id) DO NOTHING",
             &[
                 &reading.measurement_id,
                 &reading.experiment,
                 &reading.timestamp,
                 &temperature,
+                &reading.sensor,
             ],
         );
         match result {
