@@ -32,7 +32,7 @@ spec:
         app: grafana
     spec:
       enableServiceLinks: false
-      # Pinned to the control-plane node, which owns the public IP 52.209.7.51
+      # Pinned to the control-plane node, which owns the public IP 18.203.181.249
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -55,10 +55,10 @@ spec:
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
           ports:
-            # hostPort exposes it as 52.209.7.51:3000
+            # hostPort exposes it as 18.203.181.249:3001 (3000 is taken on that node)
             - name: http
               containerPort: 3000
-              hostPort: 3000
+              hostPort: 3001
           readinessProbe:
             httpGet:
               path: /api/health

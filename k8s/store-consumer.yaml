@@ -5,7 +5,7 @@ metadata:
   labels:
     app: store-consumer
 spec:
-  # One per partition of the experiment topic
+  # The experiment topic has 16 partitions, so each pod gets 4
   replicas: 4
   selector:
     matchLabels:
@@ -24,6 +24,8 @@ spec:
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
+          # Count only pods of the current version, not old ones still shutting down
+          matchLabelKeys: [pod-template-hash]
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
@@ -39,7 +41,8 @@ spec:
       containers:
         - name: store-consumer
           image: store-consumer
-          args: ["experiment", "group16-store"]
+          # Own consumer group, so the docker consumers in group16-store keep their partitions
+          args: ["experiment", "group16-k8s-store"]
           envFrom:
             - secretRef:
                 name: app-env

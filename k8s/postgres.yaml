@@ -1,3 +1,8 @@
+# Postgres is the docker container already running on the worker (group16),
+# shared with the docker consumers there (inserts use ON CONFLICT DO NOTHING,
+# so both writing the same events is harmless). This Service has no selector:
+# it gives that container the in-cluster name postgres:5432, reached through
+# the worker's Tailscale IP.
 apiVersion: v1
 kind: Service
 metadata:
@@ -5,74 +10,21 @@ metadata:
   labels:
     app: postgres
 spec:
-  selector:
-    app: postgres
   ports:
     - name: postgres
       port: 5432
-      targetPort: postgres
+      targetPort: 5432
 ---
-apiVersion: apps/v1
-kind: StatefulSet
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
   name: postgres
   labels:
-    app: postgres
-spec:
-  serviceName: postgres
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres
-  template:
-    metadata:
-      labels:
-        app: postgres
-    spec:
-      # Service links would inject POSTGRES_PORT=tcp://... and clash with .env
-      enableServiceLinks: false
-      # Data lives on the control-plane node's disk (hostPath), so pin it there
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: node-role.kubernetes.io/control-plane
-                    operator: Exists
-      tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
-      containers:
-        - name: postgres
-          image: postgres:16-alpine
-          envFrom:
-            - secretRef:
-                name: app-env
-          ports:
-            - name: postgres
-              containerPort: 5432
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
-            periodSeconds: 5
-          livenessProbe:
-            exec:
-              command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql/data
-            # Like the docker setup: only runs against an empty data dir
-            - name: init
-              mountPath: /docker-entrypoint-initdb.d
-              readOnly: true
-      volumes:
-        - name: data
-          hostPath:
-            path: /var/lib/cec/pgdata
-            type: DirectoryOrCreate
-        - name: init
-          configMap:
-            name: postgres-init
+    kubernetes.io/service-name: postgres
+addressType: IPv4
+ports:
+  - name: postgres
+    port: 5432
+    protocol: TCP
+endpoints:
+  - addresses: ["100.122.68.0"]

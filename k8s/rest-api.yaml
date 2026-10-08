@@ -7,6 +7,12 @@ metadata:
 spec:
   selector:
     app: rest-api
+  # kube-proxy accepts traffic for these node IPs on port 3003 and balances it
+  # over the replicas, wherever they run. They are the private IPs AWS maps
+  # the public ones to. NodePort can't use 3003.
+  externalIPs:
+    - 10.0.1.230 # control plane, public 18.203.181.249
+    - 10.0.1.151 # worker (group16), public 52.209.7.51
   ports:
     - name: http
       port: 3003
@@ -19,10 +25,7 @@ metadata:
   labels:
     app: rest-api
 spec:
-  replicas: 1
-  # A hostPort pod can't surge next to the old one on the same node
-  strategy:
-    type: Recreate
+  replicas: 2
   selector:
     matchLabels:
       app: rest-api
@@ -32,14 +35,16 @@ spec:
         app: rest-api
     spec:
       enableServiceLinks: false
-      # Pinned to the control-plane node, which owns the public IP 52.209.7.51
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: node-role.kubernetes.io/control-plane
-                    operator: Exists
+      # One replica per node; if a node is down, its replica waits (Pending)
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          # Count only pods of the current version, not old ones still shutting down
+          matchLabelKeys: [pod-template-hash]
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: rest-api
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -56,10 +61,8 @@ spec:
             - name: POSTGRES_PORT
               value: "5432"
           ports:
-            # hostPort exposes it as 52.209.7.51:3003 (NodePort can't use 3003)
             - name: http
               containerPort: 3003
-              hostPort: 3003
           readinessProbe:
             httpGet:
               path: /health
