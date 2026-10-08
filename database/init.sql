@@ -13,12 +13,13 @@ CREATE TABLE experiments (
 );
 
 CREATE TABLE measurements (
-    measurement_id  TEXT PRIMARY KEY,
+    measurement_id  TEXT NOT NULL,
+    sensor_id       TEXT NOT NULL,
     experiment_id   TEXT NOT NULL REFERENCES experiments (experiment_id),
     timestamp       DOUBLE PRECISION NOT NULL,
     temperature     DOUBLE PRECISION NOT NULL,
-    out_of_range    BOOLEAN NOT NULL
+    -- one row per sensor reading; the REST API averages the sensors per measurement_id
+    PRIMARY KEY (measurement_id, sensor_id)
 );
 
 CREATE INDEX measurements_experiment_time_idx ON measurements (experiment_id, timestamp);
-CREATE INDEX measurements_experiment_oor_idx ON measurements (experiment_id, out_of_range);

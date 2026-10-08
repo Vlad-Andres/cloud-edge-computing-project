@@ -1,0 +1,15 @@
+[
+  {
+    "start_time": 0,
+    "researcher": "stress-1k-1min@example.invalid",
+    "num_sensors": 10,
+    "sample_rate": 20,
+    "start_temperature": 20,
+    "stabilization_samples": 100,
+    "carry_out_samples": 14900,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  }
+]
