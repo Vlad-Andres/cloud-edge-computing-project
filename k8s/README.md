@@ -6,23 +6,9 @@ Runs the whole project on the cluster. Everything lives in namespace `cec` and i
 kubectl apply -k .
 ```
 
-`kustomization.yaml` in the repo root lists the manifests in this folder and builds ConfigMaps/Secrets from files that already exist: `monitoring/grafana/...`, `.env` and `auth/`. Changing one of those files and re-applying restarts the pods that use it.
-
-| Component | Kind | Where | Reachable at |
-|---|---|---|---|
-| Postgres | Service only, no pod | the docker container on the worker (group16) | `postgres:5432` (in cluster) |
-| store-consumer | Deployment, 4 replicas | spread over the nodes | metrics `:9091` per pod |
-| notify-consumer | Deployment, 2 replicas | spread over the nodes | metrics `:9091` per pod |
-| REST API | Deployment, 2 replicas + Service | one per node | `http://52.209.7.51:3003` and `http://18.203.181.249:3003` |
-| Prometheus | Deployment + Service | any node | `kubectl port-forward` (below) |
-| Grafana | Deployment + Service | control-plane node | `http://18.203.181.249:3001` (`admin`/`admin`) |
-| postgres-exporter | Deployment + Service | any node | `postgres-exporter:9187` (in cluster) |
+`kustomization.yaml` in the repo root lists the manifests in this folder and builds ConfigMaps/Secrets from files that already exist: `monitoring/grafana/...`, `.env` and `auth/`. 
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
-
-The experiment topic has 16 partitions: each store-consumer gets 4, each notify-consumer 8. Running two notify-consumers works because the producer keys every message by experiment ID, so all events of an experiment are in one partition and reach the same pod (notify-consumer keeps experiment state in memory).
-
-Postgres is not in the cluster: `k8s/postgres.yaml` is a Service without pods whose endpoint is the worker's Tailscale IP, so `postgres:5432` reaches the docker Postgres the docker consumers also write to. Both setups storing the same events is harmless: the inserts use `ON CONFLICT DO NOTHING`.
 
 The REST API Service listens on port 3003 of both nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`), and kube-proxy spreads the connections over both replicas, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
 
@@ -36,18 +22,6 @@ kubeadm cluster (v1.34) over Tailscale, Flannel as CNI. All nodes advertise thei
 |-----------------|-------------------------------------|----------------|----------------|
 | `ip-10-0-1-230` | control plane (also schedules pods) | 100.125.52.112 | 18.203.181.249 |
 | `ip-10-0-1-151` | worker                              | 100.122.68.0   |                |
-
-#### Prerequisites (every node)
-
-Kernel modules and sysctls Kubernetes/Flannel need, persistent across reboots:
-
-```sh
-printf 'overlay\nbr_netfilter\n' | sudo tee /etc/modules-load.d/k8s.conf
-printf 'net.bridge.bridge-nf-call-iptables = 1\nnet.bridge.bridge-nf-call-ip6tables = 1\nnet.ipv4.ip_forward = 1\n' | sudo tee /etc/sysctl.d/k8s.conf
-sudo modprobe overlay
-sudo modprobe br_netfilter
-sudo sysctl --system
-```
 
 #### Reset a node (any node leaving an existing cluster)
 
