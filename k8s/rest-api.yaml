@@ -11,8 +11,8 @@ spec:
   # over the replicas, wherever they run. They are the private IPs AWS maps
   # the public ones to. NodePort can't use 3003.
   externalIPs:
-    - 10.0.1.230 # control plane, public 18.203.181.249
-    - 10.0.1.151 # worker (group16), public 52.209.7.51
+    - 10.0.1.151 # control plane (group16), public 52.209.7.51
+    - 10.0.1.230 # worker, public 18.203.181.249
   ports:
     - name: http
       port: 3003

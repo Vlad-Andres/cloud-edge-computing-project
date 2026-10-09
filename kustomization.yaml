@@ -15,6 +15,7 @@ resources:
   - k8s/monitoring/prometheus.yaml
   - k8s/monitoring/grafana.yaml
   - k8s/monitoring/postgres-exporter.yaml
+  - k8s/monitoring/node-exporter.yaml
 
 images:
   - name: store-consumer

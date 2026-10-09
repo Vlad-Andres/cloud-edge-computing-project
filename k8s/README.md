@@ -10,21 +10,24 @@ kubectl apply -k .
 
 | Component | Kind | Where | Reachable at |
 |---|---|---|---|
-| Postgres | Service only, no pod | the docker container on the worker (group16) | `postgres:5432` (in cluster) |
+| Postgres | Service only, no pod | the docker container on group16 (control plane) | `postgres:5432` (in cluster) |
 | store-consumer | Deployment, 4 replicas | spread over the nodes | metrics `:9091` per pod |
 | notify-consumer | Deployment, 2 replicas | spread over the nodes | metrics `:9091` per pod |
 | REST API | Deployment, 2 replicas + Service | one per node | `http://52.209.7.51:3003` and `http://18.203.181.249:3003` |
-| Prometheus | Deployment + Service | any node | `kubectl port-forward` (below) |
-| Grafana | Deployment + Service | control-plane node | `http://18.203.181.249:3001` (`admin`/`admin`) |
+| Prometheus | Deployment + Services | any node | `http://52.209.7.51:3008` and `http://18.203.181.249:3008` |
+| node-exporter | DaemonSet | one per node | scraped by Prometheus (job `node`) |
+| Grafana | Deployment + Service | control-plane node | `http://52.209.7.51:3001` (`admin`/`admin`) |
 | postgres-exporter | Deployment + Service | any node | `postgres-exporter:9187` (in cluster) |
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
 
 The experiment topic has 16 partitions: each store-consumer gets 4, each notify-consumer 8. Running two notify-consumers works because the producer keys every message by experiment ID, so all events of an experiment are in one partition and reach the same pod (notify-consumer keeps experiment state in memory).
 
-Postgres is not in the cluster: `k8s/postgres.yaml` is a Service without pods whose endpoint is the worker's Tailscale IP, so `postgres:5432` reaches the docker Postgres the docker consumers also write to. Both setups storing the same events is harmless: the inserts use `ON CONFLICT DO NOTHING`.
+Postgres is not in the cluster: `k8s/postgres.yaml` is a Service without pods whose endpoint is group16's Tailscale IP (`100.122.68.0`), so `postgres:5432` reaches the docker Postgres the docker consumers also write to. Both setups storing the same events is harmless: the inserts use `ON CONFLICT DO NOTHING`.
 
 The REST API Service listens on port 3003 of both nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`), and kube-proxy spreads the connections over both replicas, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
+
+Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-external`, same mechanism), as the demo instructions ask: the course's Grafana reads the VMs' CPU and memory from the `node` job, which scrapes one node-exporter pod per node.
 
 ## Setting up
 
@@ -32,10 +35,10 @@ The REST API Service listens on port 3003 of both nodes' private IPs (`externalI
 
 kubeadm cluster (v1.34) over Tailscale, Flannel as CNI. All nodes advertise their Tailscale IP, so cluster traffic goes over the VPN.
 
-| Node            | Role                                | Tailscale IP   | Public IP      |
-|-----------------|-------------------------------------|----------------|----------------|
-| `ip-10-0-1-230` | control plane (also schedules pods) | 100.125.52.112 | 18.203.181.249 |
-| `ip-10-0-1-151` | worker                              | 100.122.68.0   |                |
+| Node                       | Role                                | Tailscale IP   | Public IP      |
+|----------------------------|-------------------------------------|----------------|----------------|
+| `ip-10-0-1-151` (group16)  | control plane (also schedules pods) | 100.122.68.0   | 52.209.7.51    |
+| `ip-10-0-1-230` (client14) | worker                              | 100.125.52.112 | 18.203.181.249 |
 
 #### Prerequisites (every node)
 
@@ -66,7 +69,7 @@ rm -rf $HOME/.kube
 
 Don't flush iptables. That would also wipe Docker's and Tailscale's rules; kube-proxy rewrites its own chains.
 
-#### Control plane (`ip-10-0-1-230`)
+#### Control plane (`ip-10-0-1-151`)
 
 Config file. `taints: []` lets the control plane run pods too:
 
@@ -75,24 +78,24 @@ cat <<'EOF' > kubeadm-init.yaml
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 localAPIEndpoint:
-  advertiseAddress: 100.125.52.112
+  advertiseAddress: 100.122.68.0
   bindPort: 6443
 nodeRegistration:
   criSocket: unix:///run/containerd/containerd.sock
   kubeletExtraArgs:
     - name: node-ip
-      value: 100.125.52.112
+      value: 100.122.68.0
   taints: []
 ---
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 kubernetesVersion: v1.34.12
-controlPlaneEndpoint: 100.125.52.112:6443
+controlPlaneEndpoint: 100.122.68.0:6443
 apiServer:
   certSANs:
-    - 100.125.52.112
-    - 10.0.1.230
-    - ip-10-0-1-230
+    - 100.122.68.0
+    - 10.0.1.151
+    - ip-10-0-1-151
 networking:
   podSubnet: 10.244.0.0/16
   serviceSubnet: 10.96.0.0/12
@@ -122,12 +125,12 @@ kubectl apply -f kube-flannel.yml
 kubectl -n kube-flannel rollout status ds/kube-flannel-ds
 ```
 
-#### Worker (`ip-10-0-1-151`)
+#### Worker (`ip-10-0-1-230`)
 
 On the worker, make kubelet advertise the Tailscale IP:
 
 ```sh
-echo 'KUBELET_EXTRA_ARGS=--node-ip=100.122.68.0' | sudo tee /etc/default/kubelet
+echo 'KUBELET_EXTRA_ARGS=--node-ip=100.125.52.112' | sudo tee /etc/default/kubelet
 ```
 
 On the control plane, print a join command (the token is valid for 24h):
@@ -139,14 +142,14 @@ kubeadm token create --print-join-command
 On the worker, run the printed command with `sudo`:
 
 ```sh
-sudo kubeadm join 100.125.52.112:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+sudo kubeadm join 100.122.68.0:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
 ```
 
 #### Verify
 
 ```sh
 kubectl get nodes -o wide
-kubectl get node ip-10-0-1-230 -o jsonpath='{.spec.taints}'
+kubectl get node ip-10-0-1-151 -o jsonpath='{.spec.taints}'
 ```
 
 Both nodes `Ready` with their Tailscale IPs as `INTERNAL-IP`; the second command prints nothing (no taints).
@@ -156,26 +159,26 @@ Both nodes `Ready` with their Tailscale IPs as `INTERNAL-IP`; the second command
 
 ### 2. Credentials
 
-On the control-plane node, in the repo root (both are gitignored):
+On the machine you deploy from (client14: it has this repo and `~/.kube/config`), in the repo root (both are gitignored):
 
 - `auth/` with the group's `ca.crt` and `kafka.keystore.pkcs12`
-- `.env` with the credentials of the worker's docker Postgres. `NOTIFICATIONS_TOKEN` is the contents of the group's `auth/token`; `POSTGRES_HOST`/`POSTGRES_PORT` are ignored in the cluster (the pods always use `postgres:5432`).
+- `.env` with the credentials of group16's docker Postgres. `NOTIFICATIONS_TOKEN` is the contents of the group's `auth/token`; `POSTGRES_HOST`/`POSTGRES_PORT` are ignored in the cluster (the pods always use `postgres:5432`).
 
 ```
 NOTIFICATIONS_TOKEN=<contents of auth/token>
 
 POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
-POSTGRES_DB=<same as the worker's .env>
-POSTGRES_USER=<same as the worker's .env>
-POSTGRES_PASSWORD=<same as the worker's .env>
+POSTGRES_DB=<same as group16's docker .env>
+POSTGRES_USER=<same as group16's docker .env>
+POSTGRES_PASSWORD=<same as group16's docker .env>
 ```
 
 After changing `.env`, `kubectl apply -k .` restarts the pods that use it.
 
 ### 3. Build and push the images
 
-The cluster pulls from Docker Hub (`vladandres/*`). The control-plane node has 2 GB of RAM, which isn't enough to compile the consumers, so add swap for the build and remove it afterwards (kubelet refuses to start with swap on):
+The cluster pulls from Docker Hub (`vladandres/*`). client14 has 2 GB of RAM, which isn't enough to compile the consumers, so add swap for the build and remove it afterwards (kubelet refuses to start with swap on):
 
 ```sh
 sudo fallocate -l 2G /swapfile-build
@@ -231,11 +234,11 @@ kubectl -n cec logs -f -l app=store-consumer --prefix
 
 curl http://52.209.7.51:3003/health
 
-# Database (on the worker)
+# Database (on group16)
 docker exec -it postgres psql -U groupdb -d groupdb
 
-# Prometheus UI on http://localhost:9090 of the machine running this
-kubectl -n cec port-forward svc/prometheus 9090:9090
+# Prometheus UI (also what the course's Grafana queries for CPU/memory)
+curl http://52.209.7.51:3008/-/ready
 ```
 
 ## Tear down
@@ -244,9 +247,9 @@ kubectl -n cec port-forward svc/prometheus 9090:9090
 kubectl delete -k .
 ```
 
-This doesn't touch Postgres: it's the docker container on the worker.
+This doesn't touch Postgres: it's the docker container on group16.
 
 ## Notes
 
-- Grafana is pinned with the `node-role.kubernetes.io/control-plane` label and uses a host port, so its public address is the control-plane node's IP, `18.203.181.249`.
-- Grafana uses host port 3001 because 3000 is taken on the control-plane node.
+- Grafana is pinned with the `node-role.kubernetes.io/control-plane` label and uses a host port, so its public address is the control-plane node's IP, `52.209.7.51`.
+- Grafana uses host port 3001 because 3000 is taken by the docker Grafana on group16.
