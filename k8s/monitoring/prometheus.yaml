@@ -39,6 +39,25 @@ spec:
       port: 9090
       targetPort: http
 ---
+# The demo's Grafana reads the node CPU/memory metrics from <vm-ip>:3008.
+# kube-proxy accepts traffic for these node IPs on 3008, like the REST API.
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-external
+  labels:
+    app: prometheus
+spec:
+  selector:
+    app: prometheus
+  externalIPs:
+    - 10.0.1.151 # control plane (group16), public 52.209.7.51
+    - 10.0.1.230 # worker, public 18.203.181.249
+  ports:
+    - name: http
+      port: 3008
+      targetPort: http
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

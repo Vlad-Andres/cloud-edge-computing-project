@@ -24,3 +24,16 @@ scrape_configs:
   - job_name: postgres
     static_configs:
       - targets: ["postgres-exporter:9187"]
+
+  # CPU and memory of every node; instance = the node's name
+  - job_name: node
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [cec]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: node-exporter
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: instance
