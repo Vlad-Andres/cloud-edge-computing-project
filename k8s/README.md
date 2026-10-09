@@ -6,24 +6,9 @@ Runs the whole project on the cluster. Everything lives in namespace `cec` and i
 kubectl apply -k .
 ```
 
-`kustomization.yaml` in the repo root lists the manifests in this folder and builds ConfigMaps/Secrets from files that already exist: `monitoring/grafana/...`, `.env` and `auth/`. Changing one of those files and re-applying restarts the pods that use it.
-
-| Component | Kind | Where | Reachable at |
-|---|---|---|---|
-| Postgres | Service only, no pod | the docker container on group16 (control plane) | `postgres:5432` (in cluster) |
-| store-consumer | Deployment, 4 replicas | spread over the nodes | metrics `:9091` per pod |
-| notify-consumer | Deployment, 2 replicas | spread over the nodes | metrics `:9091` per pod |
-| REST API | Deployment, 2 replicas + Service | one per node | `http://52.209.7.51:3003` and `http://18.203.181.249:3003` |
-| Prometheus | Deployment + Services | any node | `http://52.209.7.51:3008` and `http://18.203.181.249:3008` |
-| node-exporter | DaemonSet | one per node | scraped by Prometheus (job `node`) |
-| Grafana | Deployment + Service | control-plane node | `http://52.209.7.51:3001` (`admin`/`admin`) |
-| postgres-exporter | Deployment + Service | any node | `postgres-exporter:9187` (in cluster) |
+`kustomization.yaml` in the repo root lists the manifests in this folder and builds ConfigMaps/Secrets from files that already exist: `monitoring/grafana/...`, `.env` and `auth/`. 
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
-
-The experiment topic has 16 partitions: each store-consumer gets 4, each notify-consumer 8. Running two notify-consumers works because the producer keys every message by experiment ID, so all events of an experiment are in one partition and reach the same pod (notify-consumer keeps experiment state in memory).
-
-Postgres is not in the cluster: `k8s/postgres.yaml` is a Service without pods whose endpoint is group16's Tailscale IP (`100.122.68.0`), so `postgres:5432` reaches the docker Postgres the docker consumers also write to. Both setups storing the same events is harmless: the inserts use `ON CONFLICT DO NOTHING`.
 
 The REST API Service listens on port 3003 of both nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`), and kube-proxy spreads the connections over both replicas, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
 
