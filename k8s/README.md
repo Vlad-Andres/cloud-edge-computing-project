@@ -25,6 +25,8 @@ kubeadm cluster (v1.34) over Tailscale, Flannel as CNI. All nodes advertise thei
 | `ip-10-0-1-151` (group16)  | control plane (also schedules pods) | 100.122.68.0   | 52.209.7.51    |
 | `ip-10-0-1-230` (client14) | worker                              | 100.125.52.112 | 18.203.181.249 |
 
+To add a new machine as a worker, follow [how-to-join-cluster.md](how-to-join-cluster.md).
+
 #### Prerequisites (every node)
 
 Kernel modules and sysctls Kubernetes/Flannel need, persistent across reboots:
