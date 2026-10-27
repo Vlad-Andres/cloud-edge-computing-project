@@ -11,5 +11,6 @@ postgres = "0.19"
 prometheus = { version = "0.13", features = ["process"] }
 rdkafka = { version = "0.39", features = ["cmake-build", "ssl"] }
 serde = { version = "1", features = ["derive"] }
+signal-hook = "0.3"
 tiny_http = "0.12"
 ureq = { version = "3", features = ["json"] }

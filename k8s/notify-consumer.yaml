@@ -8,6 +8,8 @@ spec:
   # The pods split the 16 partitions (8 each). Experiment state is kept in
   # memory per pod, so this relies on all events of an experiment landing in
   # the same partition. Recreate: old and new pods never mix during an update.
+  # Not autoscaled: every rebalance moves partitions to a pod that has no state
+  # for their running experiments, so their notifications would be lost.
   replicas: 2
   strategy:
     type: Recreate
@@ -20,7 +22,7 @@ spec:
         app: notify-consumer
     spec:
       enableServiceLinks: false
-      # Same as store-consumer: lets SIGTERM stop the process (docker --init)
+      # Same as store-consumer: not PID 1; on SIGTERM it leaves the Kafka group
       shareProcessNamespace: true
       topologySpreadConstraints:
         - maxSkew: 1
@@ -47,6 +49,14 @@ spec:
           ports:
             - name: metrics
               containerPort: 9091
+          # Requests for the scheduler; no CPU limit, it would only throttle.
+          # Starting values, tune from Grafana.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
           volumeMounts:
             - name: kafka-auth
               mountPath: /usr/src/app/auth

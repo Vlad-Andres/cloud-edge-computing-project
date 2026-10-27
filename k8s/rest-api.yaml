@@ -25,7 +25,8 @@ metadata:
   labels:
     app: rest-api
 spec:
-  replicas: 2
+  # No replicas field: the HPA (rest-api-hpa.yaml) scales between 2 and 8 pods
+  # on CPU. A value here would reset the count on every kubectl apply.
   selector:
     matchLabels:
       app: rest-api
@@ -35,13 +36,14 @@ spec:
         app: rest-api
     spec:
       enableServiceLinks: false
-      # One replica per node; if a node is down, its replica waits (Pending)
+      # Spread over the nodes when possible, but still schedule extra replicas
+      # when a node is down or full
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
           # Count only pods of the current version, not old ones still shutting down
           matchLabelKeys: [pod-template-hash]
-          whenUnsatisfiable: DoNotSchedule
+          whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
               app: rest-api
@@ -63,6 +65,14 @@ spec:
           ports:
             - name: http
               containerPort: 3003
+          # The HPA's CPU target is a percentage of this request. No CPU limit,
+          # it would only throttle. Starting values, tune from Grafana.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
           readinessProbe:
             httpGet:
               path: /health

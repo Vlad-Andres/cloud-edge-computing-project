@@ -5,8 +5,9 @@ metadata:
   labels:
     app: store-consumer
 spec:
-  # The experiment topic has 16 partitions, so each pod gets 4
-  replicas: 4
+  # No replicas field: KEDA (store-consumer-scaledobject.yaml) scales between
+  # 2 and 16 pods on Kafka lag. A value here would reset the count on every
+  # kubectl apply.
   selector:
     matchLabels:
       app: store-consumer
@@ -16,8 +17,8 @@ spec:
         app: store-consumer
     spec:
       enableServiceLinks: false
-      # The consumer doesn't handle SIGTERM; as PID 1 it would ignore it.
-      # Sharing the pod's process namespace plays the role of docker --init.
+      # Keeps the consumer from running as PID 1, like docker --init. On SIGTERM
+      # it leaves the Kafka group, so scale-downs hand over partitions at once.
       shareProcessNamespace: true
       # Spread over the nodes when possible (2/2 on two, 2/1/1 on three),
       # but still schedule when a node is down
@@ -54,6 +55,14 @@ spec:
           ports:
             - name: metrics
               containerPort: 9091
+          # Requests for the scheduler (the client VMs have 2 GB RAM); no CPU
+          # limit, it would only throttle. Starting values, tune from Grafana.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
           volumeMounts:
             # The binary reads auth/ca.crt relative to its workdir
             - name: kafka-auth

@@ -1,0 +1,22 @@
+# Scales the REST API on CPU (needs metrics-server, see README).
+# Utilization is measured against the pods' CPU request (250m).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rest-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rest-api
+  minReplicas: 2
+  # Each pod holds up to 8 Postgres connections (4 workers x pool of 2);
+  # Postgres allows 100 by default
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

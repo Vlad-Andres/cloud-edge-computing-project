@@ -10,8 +10,10 @@ resources:
   - k8s/namespace.yaml
   - k8s/postgres.yaml
   - k8s/store-consumer.yaml
+  - k8s/store-consumer-scaledobject.yaml
   - k8s/notify-consumer.yaml
   - k8s/rest-api.yaml
+  - k8s/rest-api-hpa.yaml
   - k8s/monitoring/prometheus.yaml
   - k8s/monitoring/grafana.yaml
   - k8s/monitoring/postgres-exporter.yaml

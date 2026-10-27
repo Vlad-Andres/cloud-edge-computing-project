@@ -192,7 +192,25 @@ docker push vladandres/rest-api:latest
 
 On a Mac, build for the VMs with `docker buildx build --platform linux/amd64 ... --push` instead.
 
-### 4. Deploy
+### 4. Autoscalers (once per cluster)
+
+metrics-server provides pod CPU for the REST API's HPA. `--kubelet-insecure-tls` because kubeadm's kubelets use self-signed serving certificates:
+
+```sh
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml
+kubectl -n kube-system patch deployment metrics-server --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl top nodes   # works after ~1 min
+```
+
+KEDA scales store-consumer on Kafka lag. Install it before deploying: `kubectl apply -k .` fails on the ScaledObject while KEDA's CRDs are missing.
+
+```sh
+kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
+kubectl -n keda rollout status deploy/keda-operator
+```
+
+### 5. Deploy
 
 ```sh
 kubectl kustomize . > /dev/null   # check it renders
@@ -202,16 +220,60 @@ kubectl -n cec get pods -o wide
 
 The store-consumer pods wait for Postgres (init container `wait-for-postgres`) before starting.
 
+Consumers built before the `cooperative-sticky` change can't share a consumer group with newer ones. If old store-consumer pods are still running when the new image arrives, stop them all first and wait out their 45 s session timeout (they leave the group without saying so):
+
+```sh
+kubectl -n cec scale deploy/store-consumer --replicas=0
+kubectl -n cec wait --for=delete pod -l app=store-consumer --timeout=90s
+sleep 45
+kubectl -n cec scale deploy/store-consumer --replicas=2   # KEDA takes over from here
+```
+
+notify-consumer uses `Recreate`, so it never mixes old and new pods; at most it logs consumer errors for those 45 s until the old members expire.
+
 After pushing new images (tag `latest` is always pulled):
 
 ```sh
 kubectl -n cec rollout restart deployment store-consumer notify-consumer rest-api
 ```
 
+## Autoscaling
+
+| Component | Replicas | Scaled by |
+|---|---|---|
+| store-consumer | 2–16 | KEDA, on Kafka lag (`k8s/store-consumer-scaledobject.yaml`): pods = ceil(lag / 500) |
+| rest-api | 2–8 | HPA, on CPU, target 70 % of the 250m request (`k8s/rest-api-hpa.yaml`) |
+| notify-consumer | fixed 2 | not scaled: it keeps each experiment's state in memory, and every rebalance moves partitions to a pod that never saw their experiments' configuration, so their notifications would be lost |
+
+- `replicas` is deliberately missing from the store-consumer and rest-api Deployments; with it, every `kubectl apply -k .` would reset what the autoscaler chose.
+- 16 is the partition count of `experiment` (and of `group16`); more store-consumers would sit idle.
+- Consumers use `cooperative-sticky` assignment and leave the group on SIGTERM, so a scale-up or scale-down only moves the partitions that change owner, right away.
+- Postgres stays one container on group16: more nodes add consumer and REST capacity, not database capacity.
+- The requests in the Deployments are starting values; tune them from Grafana. There are no CPU limits: they would only throttle.
+
+Watch it:
+
+```sh
+kubectl -n cec get hpa,scaledobject -w
+kubectl -n cec top pods
+```
+
+Pod count over time, for the report (Prometheus/Grafana): `count(up{job="store-consumer"} == 1)`.
+
+Load the REST API (`hey` isn't installed; this runs it in a container):
+
+```sh
+docker run --rm williamyeh/hey -z 60s -c 50 "http://52.209.7.51:3003/temperature/out-of-range?experiment-id=<id>"
+```
+
+Kafka load: `experiment` is read-only for us. To replay our own profiles (`STRESS_TEST.md`), temporarily change store-consumer's topic argument to `group16` (also 16 partitions). The profiles peak at 80–200 msg/s, and in earlier runs the consumers kept up with ~100 msg/s at a lag of at most ~110 messages, so the lag may never pass 1000 (where a third pod is added); to see scaling, lower `threshold` temporarily.
+
+During the demo the Docker consumers on group16 must be stopped; otherwise every event is written twice and every notification sent twice.
+
 ## Check
 
 ```sh
-# Where the 4 store-consumers ended up
+# Where the store-consumers ended up
 kubectl -n cec get pods -l app=store-consumer -o wide
 
 kubectl -n cec logs -f deployment/notify-consumer
