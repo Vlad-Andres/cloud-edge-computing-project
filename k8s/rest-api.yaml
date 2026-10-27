@@ -13,6 +13,7 @@ spec:
   externalIPs:
     - 10.0.1.151 # control plane (group16), public 52.209.7.51
     - 10.0.1.230 # worker, public 18.203.181.249
+    - 10.0.1.72 # worker (ip-10-0-1-72), public 52.17.123.73
   ports:
     - name: http
       port: 3003

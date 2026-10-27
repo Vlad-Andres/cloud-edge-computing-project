@@ -10,7 +10,7 @@ kubectl apply -k .
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
 
-The REST API Service listens on port 3003 of both nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`), and kube-proxy spreads the connections over all rest-api pods, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
+The REST API Service listens on port 3003 of all nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`, `10.0.1.72` behind `X.X.X.X`), and kube-proxy spreads the connections over all rest-api pods, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
 
 Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-external`, same mechanism), as the demo instructions ask: the course's Grafana reads the VMs' CPU and memory from the `node` job, which scrapes one node-exporter pod per node.
 
@@ -20,10 +20,11 @@ Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-exter
 
 kubeadm cluster (v1.34) over Tailscale, Flannel as CNI. All nodes advertise their Tailscale IP, so cluster traffic goes over the VPN.
 
-| Node                       | Role                                | Tailscale IP   | Public IP      |
-|----------------------------|-------------------------------------|----------------|----------------|
-| `ip-10-0-1-151` (group16)  | control plane (also schedules pods) | 100.122.68.0   | 52.209.7.51    |
-| `ip-10-0-1-230` (client14) | worker                              | 100.125.52.112 | 18.203.181.249 |
+| Node                       | Role                                | Tailscale IP    | Public IP      |
+|----------------------------|-------------------------------------|-----------------|----------------|
+| `ip-10-0-1-151` (group16)  | control plane (also schedules pods) | 100.122.68.0    | 52.209.7.51    |
+| `ip-10-0-1-230` (client14) | worker                              | 100.125.52.112  | 18.203.181.249 |
+| `ip-10-0-1-72`             | worker                              | 100.121.181.123 | X.X.X.X        |
 
 To add a new machine as a worker, follow [how-to-join-cluster.md](how-to-join-cluster.md).
 

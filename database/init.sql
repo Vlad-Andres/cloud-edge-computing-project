@@ -22,4 +22,5 @@ CREATE TABLE measurements (
     PRIMARY KEY (measurement_id, sensor_id)
 );
 
-CREATE INDEX measurements_experiment_time_idx ON measurements (experiment_id, timestamp);
+CREATE INDEX measurements_experiment_time_idx ON measurements (experiment_id, timestamp)
+    INCLUDE (measurement_id, temperature);
