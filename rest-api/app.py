@@ -36,12 +36,11 @@ def get_pool():
 AVERAGES_SQL = """
     SELECT MIN(m.timestamp) AS timestamp, AVG(m.temperature) AS temperature
     FROM measurements m
-    JOIN experiments e ON e.experiment_id = m.experiment_id
-    WHERE m.experiment_id = %s
-      AND m.timestamp >= e.started_at
+    WHERE m.experiment_id = %(id)s
+      AND m.timestamp >= (SELECT started_at FROM experiments WHERE experiment_id = %(id)s)
       {extra_where}
-    GROUP BY m.measurement_id, e.experiment_id
-    HAVING COUNT(*) = e.sensor_count
+    GROUP BY m.measurement_id
+    HAVING COUNT(*) = (SELECT sensor_count FROM experiments WHERE experiment_id = %(id)s)
       {extra_having}
     ORDER BY timestamp
 """
@@ -70,10 +69,10 @@ def temperature():
     with get_pool().connection() as conn:
         rows = conn.execute(
             AVERAGES_SQL.format(
-                extra_where="AND m.timestamp BETWEEN %s AND %s",
+                extra_where="AND m.timestamp BETWEEN %(start)s AND %(end)s",
                 extra_having="",
             ),
-            (experiment_id, start, end),
+            {"id": experiment_id, "start": start, "end": end},
         ).fetchall()
     return jsonify(rows_to_points(rows))
 
@@ -88,9 +87,11 @@ def out_of_range():
         rows = conn.execute(
             AVERAGES_SQL.format(
                 extra_where="",
-                extra_having="AND AVG(m.temperature) NOT BETWEEN e.lower_threshold AND e.upper_threshold",
+                 extra_having="""AND AVG(m.temperature) NOT BETWEEN
+                      (SELECT lower_threshold FROM experiments WHERE experiment_id = %(id)s)
+                  AND (SELECT upper_threshold FROM experiments WHERE experiment_id = %(id)s)""",
             ),
-            (experiment_id,),
+            {"id": experiment_id},
         ).fetchall()
     return jsonify(rows_to_points(rows))
 
