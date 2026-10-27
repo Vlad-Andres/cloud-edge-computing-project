@@ -7,6 +7,11 @@
 #   make status                 nodes, pods, autoscalers
 #   make autoscalers-install    metrics-server + KEDA (safe to run repeatedly)
 #   make autoscalers-uninstall  remove them again; a running app keeps its pod counts
+#
+# Stress tests (after make start; run make watch in a second terminal):
+#   make stress-rest            HTTP load on the REST API  [DURATION=60s CONCURRENCY=50 EXPERIMENT=<id>]
+#   make stress-kafka           Kafka load for store-consumer  [PROFILE=parallel STRESS_LAG=100]
+#   make watch                  live view of autoscalers, pods and node load
 
 SHELL := /bin/bash
 
@@ -14,8 +19,18 @@ METRICS_SERVER := https://github.com/kubernetes-sigs/metrics-server/releases/dow
 KEDA           := https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
 POSTGRES       := postgres
 
+REST_URL    ?= http://52.209.7.51:3003
+DURATION    ?= 60s
+CONCURRENCY ?= 50
+EXPERIMENT  ?=
+# A profile from useful-services/experiment-producer (parallel spreads over the partitions)
+PROFILE     ?= parallel
+# Lag per store-consumer pod during stress-kafka (500 normally), so scaling shows
+STRESS_LAG  ?= 100
+
 .DEFAULT_GOAL := status
-.PHONY: start stop status postgres-up postgres-down autoscalers-install autoscalers-uninstall check-docker-consumers
+.PHONY: start stop status postgres-up postgres-down autoscalers-install autoscalers-uninstall check-docker-consumers \
+        watch stress-rest stress-kafka
 
 start: check-docker-consumers postgres-up autoscalers-install
 	kubectl apply -k .
@@ -77,3 +92,40 @@ autoscalers-install:
 autoscalers-uninstall:
 	kubectl delete -f $(KEDA) --ignore-not-found
 	kubectl delete -f $(METRICS_SERVER) --ignore-not-found
+
+watch:
+	watch -n 2 'kubectl -n cec get hpa,scaledobject; echo; kubectl -n cec get pods -l "app in (rest-api,store-consumer)" -o wide; echo; kubectl top nodes'
+
+# Queries the newest experiment (or EXPERIMENT=<id>) with hey; the rest-api HPA
+# adds pods above 70% CPU and removes them ~5 min after the load ends
+stress-rest:
+	@EXP="$(EXPERIMENT)"; \
+	[ -n "$$EXP" ] || EXP=$$(docker exec $(POSTGRES) sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "SELECT experiment_id FROM experiments ORDER BY started_at DESC NULLS LAST LIMIT 1"'); \
+	[ -n "$$EXP" ] || { echo "No experiment found; pass one: make stress-rest EXPERIMENT=<id>"; exit 1; }; \
+	echo "Load: $(CONCURRENCY) parallel requests for $(DURATION) on experiment $$EXP"; \
+	kubectl -n cec get hpa rest-api; \
+	docker run --rm williamyeh/hey -z $(DURATION) -c $(CONCURRENCY) "$(REST_URL)/temperature/out-of-range?experiment-id=$$EXP"; \
+	kubectl -n cec get hpa rest-api
+
+# experiment is read-only for us, so store-consumer temporarily reads the
+# group16 topic (in its own consumer group) and scales at a lower lag. The trap
+# restores the normal setup afterwards, also on errors and Ctrl+C. notify-consumer
+# keeps reading experiment, so the test data never causes notifications.
+stress-kafka:
+	@set -e; \
+	trap 'echo "Restoring the normal setup"; kubectl apply -k "$(CURDIR)" >/dev/null; kubectl -n cec rollout status deploy/store-consumer --timeout=180s' EXIT; \
+	kubectl -n cec patch deploy store-consumer --type=json \
+	  -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["group16","group16-k8s-stress-store"]}]'; \
+	kubectl -n cec patch scaledobject store-consumer --type=json \
+	  -p '[{"op":"replace","path":"/spec/triggers/0/metadata/threshold","value":"$(STRESS_LAG)"}]'; \
+	kubectl -n cec rollout status deploy/store-consumer --timeout=180s; \
+	cd "$(CURDIR)/useful-services/experiment-producer"; \
+	TOPIC=group16 AUTH_DIR="$(CURDIR)/auth" docker compose --profile $(PROFILE) up; \
+	TOPIC=group16 docker compose --profile $(PROFILE) down; \
+	echo "Producer finished; waiting until the lag is worked off (Ctrl+C to skip)"; \
+	for i in $$(seq 1 120); do \
+	  lag=$$(kubectl -n cec get hpa keda-hpa-store-consumer -o jsonpath='{.status.currentMetrics[0].external.current.averageValue}'); \
+	  pods=$$(kubectl -n cec get deploy store-consumer -o jsonpath='{.status.readyReplicas}'); \
+	  echo "$$(date +%T)  lag per pod: $$lag  store-consumer pods: $$pods"; \
+	  [ "$$lag" = "0" ] && break; sleep 5; \
+	done
