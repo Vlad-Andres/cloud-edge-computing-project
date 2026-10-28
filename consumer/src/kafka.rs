@@ -99,6 +99,9 @@ pub fn consume(
         .set("enable.auto.commit", "true")
         // On a rebalance only the partitions that move are paused, not all of them
         .set("partition.assignment.strategy", "cooperative-sticky")
+        // Messages fetched ahead of processing. The default (64 MiB) made pods
+        // catching up on a backlog grow to 140-250 MiB on 2 GB nodes.
+        .set("queued.max.messages.kbytes", "16384")
         .set("security.protocol", "ssl")
         .set("ssl.ca.location", "auth/ca.crt")
         .set("ssl.keystore.location", "auth/kafka.keystore.pkcs12")

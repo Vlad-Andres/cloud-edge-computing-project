@@ -1,5 +1,10 @@
 # Scales store-consumer on Kafka lag (needs KEDA, see README). KEDA creates
 # and drives the HPA for it, so there is no separate HPA.
+#
+# One pod stores ~580 events/s (1.7 ms per event, almost all of it the
+# Postgres write); live traffic is ~100 events/s. Extra pods only help to work
+# off a backlog, and all of them write into the same Postgres on group16, so
+# the range is kept small and grows slowly.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -8,19 +13,24 @@ spec:
   scaleTargetRef:
     name: store-consumer
   minReplicaCount: 2
-  # = partitions of the topic; more pods would sit idle
-  maxReplicaCount: 16
-  pollingInterval: 10
+  # More writers don't make the single Postgres faster; they only add load
+  maxReplicaCount: 4
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
+        scaleUp:
+          # One pod per minute: a short burst doesn't jump to the maximum
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
         scaleDown:
           # Every change in pod count is a Kafka rebalance
           stabilizationWindowSeconds: 120
-  # If Prometheus can't be queried 3 times in a row, hold 4 pods
+  # If the lag can't be read 3 times in a row, fall back to the minimum, not to more load
   fallback:
     failureThreshold: 3
-    replicas: 4
+    replicas: 2
   triggers:
     - type: prometheus
       metadata:
@@ -30,5 +40,6 @@ spec:
           sum(clamp_min(
             max by (partition) (kafka_partition_high_watermark{job="store-consumer"})
             - max by (partition) (kafka_partition_consumed_offset{job="store-consumer"}), 0))
-        # Target lag per pod: pods = ceil(lag / threshold)
-        threshold: "500"
+        # Target lag per pod: pods = ceil(lag / threshold). Live lag is ~100,
+        # so only a real backlog (> 2000 with 2 pods) adds pods.
+        threshold: "1000"

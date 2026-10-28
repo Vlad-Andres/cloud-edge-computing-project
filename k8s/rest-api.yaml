@@ -25,7 +25,7 @@ metadata:
   labels:
     app: rest-api
 spec:
-  # No replicas field: the HPA (rest-api-hpa.yaml) scales between 2 and 8 pods
+  # No replicas field: the HPA (rest-api-hpa.yaml) scales between 2 and 4 pods
   # on CPU. A value here would reset the count on every kubectl apply.
   selector:
     matchLabels:
@@ -65,14 +65,14 @@ spec:
           ports:
             - name: http
               containerPort: 3003
-          # The HPA's CPU target is a percentage of this request. No CPU limit,
-          # it would only throttle. Starting values, tune from Grafana.
+          # Measured: ~125 MiB; ~200m CPU at 80 req/s. The HPA's CPU target is
+          # a percentage of this request. No CPU limit, it would only throttle.
           resources:
             requests:
-              cpu: 250m
-              memory: 256Mi
+              cpu: 200m
+              memory: 160Mi
             limits:
-              memory: 512Mi
+              memory: 384Mi
           readinessProbe:
             httpGet:
               path: /health

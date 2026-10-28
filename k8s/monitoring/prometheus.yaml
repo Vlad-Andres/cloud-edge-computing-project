@@ -92,6 +92,14 @@ spec:
           ports:
             - name: http
               containerPort: 9090
+          # Measured ~80 MiB (2 h of data). The limit keeps a growing series
+          # count from taking a 2 GB node's memory.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus

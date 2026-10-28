@@ -3,7 +3,8 @@ use consumer::kafka::END_TO_END_BUCKETS;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::thread;
-use std::sync::Arc;
+use std::sync::mpsc::{SyncSender, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use prometheus::{
     Histogram, HistogramVec, IntGauge, register_histogram, register_histogram_vec,
@@ -37,10 +38,17 @@ struct Experiment {
     readings: HashMap<String, (f64, usize, Instant)>,
 }
 
+/// Notifications sent at the same time. A POST normally takes ~30 ms, so this
+/// is several hundred per second.
+const SEND_WORKERS: usize = 16;
+/// Notifications waiting for a free worker. When the queue is full, handle()
+/// waits: a slow notification service then backs up into Kafka lag instead of
+/// one thread (and its memory) per notification.
+const SEND_QUEUE: usize = 256;
+
 pub struct Notifier {
-    agent: Agent,
-    url: String,
-    token: String,
+    queue: SyncSender<Notification>,
+    workers: Vec<thread::JoinHandle<()>>,
     experiments: HashMap<String, Experiment>,
     metrics: Arc<NotifierMetrics>,
 }
@@ -71,7 +79,7 @@ impl NotifierMetrics {
             ).expect("register notify_request_duration_seconds"),
             inflight_requests: register_int_gauge!(
                 "notify_inflight_requests",
-                "Notifications sent to the notification service that have not been answered yet"
+                "Notifications queued or sent to the notification service and not answered yet"
             ).expect("register notify_inflight_requests"),
             experiments: register_int_gauge!(
                 "notify_experiments_tracked",
@@ -97,17 +105,49 @@ impl NotifierMetrics {
 
 impl Notifier {
     pub fn new(url: String, token: String, metrics: Arc<NotifierMetrics>) -> Self {
-        let agent = Agent::config_builder()
+        let agent: Agent = Agent::config_builder()
             .http_status_as_error(false)
             .timeout_global(Some(Duration::from_secs(5)))
             .build()
             .into();
+        let (queue, receiver) = sync_channel::<Notification>(SEND_QUEUE);
+        let receiver = Arc::new(Mutex::new(receiver));
+        let workers = (0..SEND_WORKERS)
+            .map(|_| {
+                let (agent, url, token, metrics, receiver) = (
+                    agent.clone(),
+                    url.clone(),
+                    token.clone(),
+                    Arc::clone(&metrics),
+                    Arc::clone(&receiver),
+                );
+                thread::spawn(move || loop {
+                    // The lock is released at the end of this statement, before the POST
+                    let next = receiver.lock().expect("notification queue lock").recv();
+                    match next {
+                        Ok(notification) => post(&agent, &url, &token, &metrics, notification),
+                        // Queue closed by finish() and empty
+                        Err(_) => return,
+                    }
+                })
+            })
+            .collect();
         Notifier {
-            agent,
-            url,
-            token,
+            queue,
+            workers,
             experiments: HashMap::new(),
             metrics,
+        }
+    }
+
+    /// Sends every notification still queued, then returns. Called on SIGTERM:
+    /// their Kafka offsets are already committed, so anything dropped here
+    /// would never be sent.
+    pub fn finish(self) {
+        let Notifier { queue, workers, .. } = self;
+        drop(queue);
+        for worker in workers {
+            let _ = worker.join();
         }
     }
 
@@ -190,45 +230,43 @@ impl Notifier {
     }
 
     fn send(&self, notification: Notification) {
-        let (agent, url, token, metrics) = (
-            self.agent.clone(),
-            self.url.clone(),
-            self.token.clone(),
-            Arc::clone(&self.metrics),
-        );
-        metrics.inflight_requests.inc();
-        thread::spawn(move || {
-            let notification_type = format!("{:?}", notification.notification_type);
-            let started = Instant::now();
-            match agent.post(&url).query("token", &token).send_json(&notification) {
-                Ok(mut response) => {
-                    let status = response.status();
-                    let body = response.body_mut().read_to_string().unwrap_or_default();
-                    println!(
-                        "{:?} {} -> {} {}",
-                        notification.notification_type,
-                        notification.measurement_id,
-                        status,
-                        body
-                    );
-                    match body.trim().parse::<f64>() {
-                        Ok(latency) => metrics
-                            .service_latency
-                            .with_label_values(&[&notification_type])
-                            .observe(latency),
-                        Err(error) => eprintln!(
-                            "Invalid notification latency ({}, body `{body}`): {error}",
-                            notification.measurement_id
-                        ),
-                    }
-                }
-                Err(error) => eprintln!("Notify error ({}): {error}", notification.measurement_id),
-            }
-            metrics
-                .request_duration
-                .with_label_values(&[&notification_type])
-                .observe(started.elapsed().as_secs_f64());
-            metrics.inflight_requests.dec();
-        });
+        self.metrics.inflight_requests.inc();
+        if self.queue.send(notification).is_err() {
+            self.metrics.inflight_requests.dec();
+        }
     }
+}
+
+fn post(agent: &Agent, url: &str, token: &str, metrics: &NotifierMetrics, notification: Notification) {
+    let notification_type = format!("{:?}", notification.notification_type);
+    let started = Instant::now();
+    match agent.post(url).query("token", token).send_json(&notification) {
+        Ok(mut response) => {
+            let status = response.status();
+            let body = response.body_mut().read_to_string().unwrap_or_default();
+            println!(
+                "{:?} {} -> {} {}",
+                notification.notification_type,
+                notification.measurement_id,
+                status,
+                body
+            );
+            match body.trim().parse::<f64>() {
+                Ok(latency) => metrics
+                    .service_latency
+                    .with_label_values(&[&notification_type])
+                    .observe(latency),
+                Err(error) => eprintln!(
+                    "Invalid notification latency ({}, body `{body}`): {error}",
+                    notification.measurement_id
+                ),
+            }
+        }
+        Err(error) => eprintln!("Notify error ({}): {error}", notification.measurement_id),
+    }
+    metrics
+        .request_duration
+        .with_label_values(&[&notification_type])
+        .observe(started.elapsed().as_secs_f64());
+    metrics.inflight_requests.dec();
 }

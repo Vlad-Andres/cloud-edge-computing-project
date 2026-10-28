@@ -55,10 +55,18 @@ spec:
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
           ports:
-            # hostPort exposes it as 18.203.181.249:3001 (3000 is taken on that node)
+            # hostPort exposes it on the control-plane node as 52.209.7.51:3001
+            # (3000 is the docker Grafana there)
             - name: http
               containerPort: 3000
               hostPort: 3001
+          # Measured ~125 MiB
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
           readinessProbe:
             httpGet:
               path: /api/health

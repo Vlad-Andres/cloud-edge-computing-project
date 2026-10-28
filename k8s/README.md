@@ -39,6 +39,12 @@ sudo modprobe br_netfilter
 sudo sysctl --system
 ```
 
+Once the node is in the cluster, reserve CPU and memory for everything that isn't a pod (OS, kubelet, SSH, and Postgres on group16), so pods can never take the whole VM. From the repo root:
+
+```sh
+sudo scripts/reserve-node.sh   # 500m CPU; 1Gi memory on group16, 512Mi on the 2 GB nodes
+```
+
 #### Reset a node (any node leaving an existing cluster)
 
 ```sh
@@ -243,15 +249,17 @@ kubectl -n cec rollout restart deployment store-consumer notify-consumer rest-ap
 
 | Component | Replicas | Scaled by |
 |---|---|---|
-| store-consumer | 2–16 | KEDA, on Kafka lag (`k8s/store-consumer-scaledobject.yaml`): pods = ceil(lag / 500) |
-| rest-api | 2–8 | HPA, on CPU, target 70 % of the 250m request (`k8s/rest-api-hpa.yaml`) |
+| store-consumer | 2–4 | KEDA, on Kafka lag (`k8s/store-consumer-scaledobject.yaml`): pods = ceil(lag / 1000), at most +1 pod per minute |
+| rest-api | 2–4 | HPA, on CPU, target 60 % of the 200m request (`k8s/rest-api-hpa.yaml`), at most +1 pod per 30 s |
 | notify-consumer | fixed 2 | not scaled: it keeps each experiment's state in memory, and every rebalance moves partitions to a pod that never saw their experiments' configuration, so their notifications would be lost |
 
+- The ranges are deliberately small. One store-consumer stores ~580 events/s (1.7 ms per event, almost all of it the Postgres write) and live traffic is ~100/s; extra pods only help to work off a backlog, and they all write into the one Postgres on group16. Scaling up to 16 overloaded the 2 GB VMs and group16's CPU credits (see `k8s/SCALING-REVIEW.md`).
+- If KEDA can't read the lag, it falls back to 2 pods, not more.
+- `make start` moves both consumer groups to the newest message first: a new run starts at the current events instead of replaying everything since the last run.
+- The consumers fetch at most 16 MiB ahead from Kafka, and notify-consumer sends with 16 workers and a bounded queue (backpressure into Kafka lag instead of memory); on SIGTERM it sends what's queued before exiting.
 - `replicas` is deliberately missing from the store-consumer and rest-api Deployments; with it, every `kubectl apply -k .` would reset what the autoscaler chose.
-- 16 is the partition count of `experiment` (and of `group16`); more store-consumers would sit idle.
 - Consumers use `cooperative-sticky` assignment and leave the group on SIGTERM, so a scale-up or scale-down only moves the partitions that change owner, right away.
-- Postgres stays one container on group16: more nodes add consumer and REST capacity, not database capacity.
-- The requests in the Deployments are starting values; tune them from Grafana. There are no CPU limits: they would only throttle.
+- Requests and memory limits on every pod are based on measured usage; there are no CPU limits, they would only throttle.
 
 Watch it:
 
@@ -262,13 +270,14 @@ kubectl -n cec top pods
 
 Pod count over time, for the report (Prometheus/Grafana): `count(up{job="store-consumer"} == 1)`.
 
-Load the REST API (`hey` isn't installed; this runs it in a container):
+Stress tests (from the repo root on group16, after `make start`; `make watch` in a second terminal):
 
 ```sh
-docker run --rm williamyeh/hey -z 60s -c 50 "http://52.209.7.51:3003/temperature/out-of-range?experiment-id=<id>"
+make stress-rest    # hey against the REST API: DURATION=60s CONCURRENCY=50
+make stress-kafka   # PROFILE=parallel (32 experiments, 640 events/s) on the group16 topic, threshold 100
 ```
 
-Kafka load: `experiment` is read-only for us. To replay our own profiles (`STRESS_TEST.md`), temporarily change store-consumer's topic argument to `group16` (also 16 partitions). The profiles peak at 80–200 msg/s, and in earlier runs the consumers kept up with ~100 msg/s at a lag of at most ~110 messages, so the lag may never pass 1000 (where a third pod is added); to see scaling, lower `threshold` temporarily.
+`stress-kafka` restores the normal setup afterwards, also on errors and Ctrl+C. Run load generators from outside the cluster if you can (e.g. `hey` from a laptop); on group16 they take CPU from the system they measure.
 
 During the demo the Docker consumers on group16 must be stopped; otherwise every event is written twice and every notification sent twice.
 

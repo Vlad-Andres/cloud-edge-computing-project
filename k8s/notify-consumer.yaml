@@ -49,8 +49,9 @@ spec:
           ports:
             - name: metrics
               containerPort: 9091
-          # Requests for the scheduler; no CPU limit, it would only throttle.
-          # Starting values, tune from Grafana.
+          # Measured: 9-17 MiB live. A backlog replay once reached ~245 MiB
+          # (64 MiB Kafka prefetch + one thread per notification); both are
+          # bounded now. No CPU limit, it would only throttle.
           resources:
             requests:
               cpu: 50m

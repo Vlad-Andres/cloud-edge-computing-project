@@ -2,7 +2,7 @@
 # repo root: Postgres runs in Docker there, and .env/auth/ are needed by
 # kubectl apply -k. Stopping frees the CPU so the VMs earn back CPU credits.
 #
-#   make start                  Postgres -> autoscalers -> app
+#   make start                  Postgres -> autoscalers -> Kafka groups to the newest message -> app
 #   make stop                   app -> autoscalers -> Postgres
 #   make status                 nodes, pods, autoscalers
 #   make autoscalers-install    metrics-server + KEDA (safe to run repeatedly)
@@ -18,6 +18,11 @@ SHELL := /bin/bash
 METRICS_SERVER := https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml
 KEDA           := https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
 POSTGRES       := postgres
+# Moves consumer groups to the newest message (scripts/reset-kafka-offsets.py);
+# arguments: <topic> <group>...
+RESET_OFFSETS  := docker run --rm -v "$(CURDIR)/auth":/auth:ro \
+                    -v "$(CURDIR)/scripts/reset-kafka-offsets.py":/reset.py:ro python:3.12-slim \
+                    sh -c 'pip install -q --disable-pip-version-check --root-user-action=ignore confluent-kafka && python /reset.py "$$@"' reset
 
 REST_URL    ?= http://52.209.7.51:3003
 DURATION    ?= 60s
@@ -25,22 +30,39 @@ CONCURRENCY ?= 50
 EXPERIMENT  ?=
 # A profile from useful-services/experiment-producer (parallel spreads over the partitions)
 PROFILE     ?= parallel
-# Lag per store-consumer pod during stress-kafka (500 normally), so scaling shows
+# Lag per store-consumer pod during stress-kafka (1000 normally), so scaling shows
 STRESS_LAG  ?= 100
 
 .DEFAULT_GOAL := status
 .PHONY: start stop status postgres-up postgres-down autoscalers-install autoscalers-uninstall check-docker-consumers \
-        watch stress-rest stress-kafka
+        kafka-reset watch stress-rest stress-kafka
 
-start: check-docker-consumers postgres-up autoscalers-install
+start: check-docker-consumers postgres-up autoscalers-install kafka-reset
 	kubectl apply -k .
 	for d in rest-api store-consumer notify-consumer; do kubectl -n cec rollout status deploy/$$d --timeout=180s; done
 	@$(MAKE) --no-print-directory status
 
+# A new run starts at the current events instead of replaying everything since
+# the last run. Kafka only accepts this while no consumer of the group runs.
+kafka-reset:
+	@if kubectl get namespace cec >/dev/null 2>&1; then \
+	  echo "App is running: Kafka positions left as they are"; \
+	else \
+	  $(RESET_OFFSETS) experiment group16-k8s-store group16-k8s-notify; \
+	fi
+
 # Deleting the namespace removes the whole app, even when KEDA is already gone
-# or .env is missing (kubectl delete -k would fail on those)
+# or .env is missing (kubectl delete -k would fail on those). Pods on a node
+# that is down never confirm their deletion and would block it, so they are
+# force-removed after 60 s.
 stop:
-	kubectl delete namespace cec --ignore-not-found --wait=true --timeout=180s
+	kubectl delete namespace cec --ignore-not-found --wait=false
+	@for i in $$(seq 1 60); do kubectl get namespace cec >/dev/null 2>&1 || break; sleep 1; done; \
+	if kubectl get namespace cec >/dev/null 2>&1; then \
+	  echo "Force-removing pods stuck on unreachable nodes"; \
+	  kubectl -n cec delete pods --all --force --grace-period=0 >/dev/null 2>&1 || true; \
+	  kubectl wait --for=delete namespace/cec --timeout=120s; \
+	fi
 	@$(MAKE) --no-print-directory autoscalers-uninstall
 	@$(MAKE) --no-print-directory postgres-down
 
@@ -97,7 +119,7 @@ watch:
 	watch -n 2 'kubectl -n cec get hpa,scaledobject; echo; kubectl -n cec get pods -l "app in (rest-api,store-consumer)" -o wide; echo; kubectl top nodes'
 
 # Queries the newest experiment (or EXPERIMENT=<id>) with hey; the rest-api HPA
-# adds pods above 70% CPU and removes them ~5 min after the load ends
+# adds pods above 60% CPU and removes them ~5 min after the load ends
 stress-rest:
 	@EXP="$(EXPERIMENT)"; \
 	[ -n "$$EXP" ] || EXP=$$(docker exec $(POSTGRES) sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "SELECT experiment_id FROM experiments ORDER BY started_at DESC NULLS LAST LIMIT 1"'); \
@@ -108,11 +130,13 @@ stress-rest:
 	kubectl -n cec get hpa rest-api
 
 # experiment is read-only for us, so store-consumer temporarily reads the
-# group16 topic (in its own consumer group) and scales at a lower lag. The trap
-# restores the normal setup afterwards, also on errors and Ctrl+C. notify-consumer
-# keeps reading experiment, so the test data never causes notifications.
+# group16 topic (in its own consumer group, moved to the newest message first so
+# old test data isn't replayed) and scales at a lower lag. The trap restores the
+# normal setup afterwards, also on errors and Ctrl+C. notify-consumer keeps
+# reading experiment, so the test data never causes notifications.
 stress-kafka:
 	@set -e; \
+	$(RESET_OFFSETS) group16 group16-k8s-stress-store; \
 	trap 'echo "Restoring the normal setup"; kubectl apply -k "$(CURDIR)" >/dev/null; kubectl -n cec rollout status deploy/store-consumer --timeout=180s' EXIT; \
 	kubectl -n cec patch deploy store-consumer --type=json \
 	  -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["group16","group16-k8s-stress-store"]}]'; \

@@ -6,7 +6,7 @@ metadata:
     app: store-consumer
 spec:
   # No replicas field: KEDA (store-consumer-scaledobject.yaml) scales between
-  # 2 and 16 pods on Kafka lag. A value here would reset the count on every
+  # 2 and 4 pods on Kafka lag. A value here would reset the count on every
   # kubectl apply.
   selector:
     matchLabels:
@@ -55,14 +55,15 @@ spec:
           ports:
             - name: metrics
               containerPort: 9091
-          # Requests for the scheduler (the client VMs have 2 GB RAM); no CPU
-          # limit, it would only throttle. Starting values, tune from Grafana.
+          # Measured: ~6 MiB live, up to 140 MiB while catching up with the old
+          # 64 MiB Kafka prefetch (now 16 MiB, see consumer/src/kafka.rs).
+          # No CPU limit, it would only throttle.
           resources:
             requests:
               cpu: 50m
-              memory: 32Mi
+              memory: 64Mi
             limits:
-              memory: 128Mi
+              memory: 192Mi
           volumeMounts:
             # The binary reads auth/ca.crt relative to its workdir
             - name: kafka-auth
