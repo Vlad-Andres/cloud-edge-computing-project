@@ -7,7 +7,8 @@ Endpoints:
 """
 import os
 
-from flask import Flask, jsonify, request
+import orjson
+from flask import Flask, Response, jsonify, request
 from psycopg.conninfo import make_conninfo
 from psycopg_pool import ConnectionPool
 
@@ -22,7 +23,10 @@ DB_CONNINFO = make_conninfo(
 
 app = Flask(__name__)
 # Connection pool: reuse connections instead of opening one per request.
-pool = ConnectionPool(DB_CONNINFO, min_size=1, max_size=2, timeout=5, open=False)
+# Autocommit: a single read needs no BEGIN and COMMIT, two round trips to the database.
+pool = ConnectionPool(
+    DB_CONNINFO, min_size=1, max_size=2, timeout=5, open=False, kwargs={"autocommit": True}
+)
 
 
 def get_pool():
@@ -31,24 +35,27 @@ def get_pool():
     return pool
 
 
-# The measurements table has one row per sensor. One measurement = all sensors with
-# the same measurement_id, and its temperature is their average.
+# One measurement = all sensors with the same measurement_id, and its temperature is
+# their average. store-consumer stores that average when the last sensor reports, so
+# reading an experiment is one index scan in time order.
 AVERAGES_SQL = """
-    SELECT MIN(m.timestamp) AS timestamp, AVG(m.temperature) AS temperature
-    FROM measurements m
-    JOIN experiments e ON e.experiment_id = m.experiment_id
-    WHERE m.experiment_id = %s
-      AND m.timestamp >= e.started_at
+    SELECT timestamp, temperature
+    FROM measurement_averages
+    WHERE experiment_id = %(id)s
+      AND timestamp >= (SELECT started_at FROM experiments WHERE experiment_id = %(id)s)
       {extra_where}
-    GROUP BY m.measurement_id, e.experiment_id
-    HAVING COUNT(*) = e.sensor_count
-      {extra_having}
     ORDER BY timestamp
 """
 
 
-def rows_to_points(rows):
-    return [{"timestamp": ts, "temperature": temp} for ts, temp in rows]
+def points_response(extra_where, params):
+    with get_pool().connection() as conn:
+        # binary: the floats skip the conversion to text and back
+        rows = conn.execute(
+            AVERAGES_SQL.format(extra_where=extra_where), params, binary=True
+        ).fetchall()
+    points = [{"timestamp": ts, "temperature": temp} for ts, temp in rows]
+    return Response(orjson.dumps(points), mimetype="application/json")
 
 
 @app.get("/health")
@@ -67,15 +74,10 @@ def temperature():
     if not experiment_id:
         return jsonify({"error": "experiment-id is required"}), 400
 
-    with get_pool().connection() as conn:
-        rows = conn.execute(
-            AVERAGES_SQL.format(
-                extra_where="AND m.timestamp BETWEEN %s AND %s",
-                extra_having="",
-            ),
-            (experiment_id, start, end),
-        ).fetchall()
-    return jsonify(rows_to_points(rows))
+    return points_response(
+        "AND timestamp BETWEEN %(start)s AND %(end)s",
+        {"id": experiment_id, "start": start, "end": end},
+    )
 
 
 @app.get("/temperature/out-of-range")
@@ -84,15 +86,7 @@ def out_of_range():
     if not experiment_id:
         return jsonify({"error": "experiment-id is required"}), 400
 
-    with get_pool().connection() as conn:
-        rows = conn.execute(
-            AVERAGES_SQL.format(
-                extra_where="",
-                extra_having="AND AVG(m.temperature) NOT BETWEEN e.lower_threshold AND e.upper_threshold",
-            ),
-            (experiment_id,),
-        ).fetchall()
-    return jsonify(rows_to_points(rows))
+    return points_response("AND out_of_range", {"id": experiment_id})
 
 
 if __name__ == "__main__":

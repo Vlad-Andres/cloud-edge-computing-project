@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rest-api
+  labels:
+    app: rest-api
+spec:
+  selector:
+    app: rest-api
+  # kube-proxy accepts traffic for these node IPs on port 3003 and balances it
+  # over the replicas, wherever they run. They are the private IPs AWS maps
+  # the public ones to. NodePort can't use 3003.
+  externalIPs:
+    - 10.0.1.151 # control plane (group16), public 52.209.7.51
+    - 10.0.1.230 # worker, public 18.203.181.249
+    - 10.0.1.72 # worker (ip-10-0-1-72), public 52.17.123.73
+  ports:
+    - name: http
+      port: 3003
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rest-api
+  labels:
+    app: rest-api
+spec:
+  # No replicas: the HPA sets the count (2-4, rest-api-hpa.yaml). With it,
+  # every kubectl apply -k would reset what the HPA chose.
+  selector:
+    matchLabels:
+      app: rest-api
+  template:
+    metadata:
+      labels:
+        app: rest-api
+    spec:
+      enableServiceLinks: false
+      # Spread over the nodes when possible, but still schedule when a node is
+      # down: the scheduler also counts a NotReady node, so with DoNotSchedule
+      # a 3rd and 4th pod would stay Pending while such a node is registered
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          # Count only pods of the current version, not old ones still shutting down
+          matchLabelKeys: [pod-template-hash]
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: rest-api
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: rest-api
+          image: rest-api
+          envFrom:
+            - secretRef:
+                name: app-env
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          ports:
+            - name: http
+              containerPort: 3003
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10

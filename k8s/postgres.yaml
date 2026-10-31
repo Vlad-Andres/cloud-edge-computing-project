@@ -1,0 +1,31 @@
+# Postgres is the docker container already running on the worker (group16),
+# shared with the docker consumers there (inserts use ON CONFLICT DO NOTHING,
+# so both writing the same events is harmless). This Service has no selector:
+# it gives that container the in-cluster name postgres:5432, reached through
+# group16's private IP: a query from the other node takes 0.6 ms there over the
+# VPC, 1.3 ms over Tailscale. A node outside the VPC can't reach this address.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: postgres
+  labels:
+    kubernetes.io/service-name: postgres
+addressType: IPv4
+ports:
+  - name: postgres
+    port: 5432
+    protocol: TCP
+endpoints:
+  - addresses: ["10.0.1.151"]

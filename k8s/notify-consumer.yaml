@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notify-consumer
+  labels:
+    app: notify-consumer
+spec:
+  # The pods split the 16 partitions (8 each). Experiment state is kept in
+  # memory per pod, so this relies on all events of an experiment landing in
+  # the same partition. Recreate: old and new pods never mix during an update.
+  replicas: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: notify-consumer
+  template:
+    metadata:
+      labels:
+        app: notify-consumer
+    spec:
+      enableServiceLinks: false
+      # Same as store-consumer: not PID 1; on SIGTERM it leaves the Kafka group
+      shareProcessNamespace: true
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          # Count only pods of the current version, not old ones still shutting down
+          matchLabelKeys: [pod-template-hash]
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: notify-consumer
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: notify-consumer
+          image: notify-consumer
+          # Own consumer group, separate from the docker consumer's group16-notify.
+          # Sends to the real notifications service (default URL) with NOTIFICATIONS_TOKEN.
+          args: ["experiment", "group16-k8s-notify"]
+          envFrom:
+            - secretRef:
+                name: app-env
+          ports:
+            - name: metrics
+              containerPort: 9091
+          volumeMounts:
+            - name: kafka-auth
+              mountPath: /usr/src/app/auth
+              readOnly: true
+      volumes:
+        - name: kafka-auth
+          secret:
+            secretName: kafka-auth

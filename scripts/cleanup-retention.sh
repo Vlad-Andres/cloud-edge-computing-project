@@ -8,15 +8,30 @@ POSTGRES_DB=${POSTGRES_DB:-groupdb}
 
 cd "$PROJECT_ROOT"
 
-docker exec "$POSTGRES_CONTAINER" psql \
-    -U "$POSTGRES_USER" \
-    -d "$POSTGRES_DB" \
-    -v ON_ERROR_STOP=1 \
-    -c "DELETE FROM measurements
-        WHERE timestamp < extract(epoch FROM now() - interval '1 days');"
+sql() {
+    echo "$(date -u '+%F %T') $1"
+    docker exec "$POSTGRES_CONTAINER" psql \
+        -U "$POSTGRES_USER" \
+        -d "$POSTGRES_DB" \
+        -v ON_ERROR_STOP=1 \
+        -c "$1"
+}
 
-docker exec "$POSTGRES_CONTAINER" psql \
-    -U "$POSTGRES_USER" \
-    -d "$POSTGRES_DB" \
-    -v ON_ERROR_STOP=1 \
-    -c "VACUUM (ANALYZE) measurements;"
+sql "DELETE FROM measurements
+     WHERE timestamp < extract(epoch FROM now() - interval '1 days');"
+
+sql "DELETE FROM measurement_averages
+     WHERE timestamp < extract(epoch FROM now() - interval '1 days');"
+
+sql "DELETE FROM experiments e
+     WHERE e.terminated_at < extract(epoch FROM now() - interval '1 days')
+       AND NOT EXISTS (SELECT 1 FROM measurements m WHERE m.experiment_id = e.experiment_id)
+       AND NOT EXISTS (SELECT 1 FROM measurement_averages a WHERE a.experiment_id = e.experiment_id);"
+
+sql "VACUUM (ANALYZE) measurements, measurement_averages, experiments;"
+
+sql "REINDEX TABLE CONCURRENTLY measurements;"
+
+sql "REINDEX TABLE CONCURRENTLY measurement_averages;"
+
+sql "SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;"

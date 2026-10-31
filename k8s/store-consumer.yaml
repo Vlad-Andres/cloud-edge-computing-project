@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-consumer
+  labels:
+    app: store-consumer
+spec:
+  # No replicas: KEDA sets the count (1-3, store-consumer-scaledobject.yaml).
+  # With it, every kubectl apply -k would reset what KEDA chose.
+  selector:
+    matchLabels:
+      app: store-consumer
+  template:
+    metadata:
+      labels:
+        app: store-consumer
+    spec:
+      enableServiceLinks: false
+      # Keeps the consumer from running as PID 1, like docker --init. On SIGTERM
+      # it leaves the Kafka group, so scale-downs hand over partitions at once.
+      shareProcessNamespace: true
+      # Spread over the nodes when possible, but still schedule when a node is down
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          # Count only pods of the current version, not old ones still shutting down
+          matchLabelKeys: [pod-template-hash]
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: store-consumer
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command: ["sh", "-c", "until pg_isready -h postgres -p 5432; do sleep 2; done"]
+      containers:
+        - name: store-consumer
+          image: store-consumer
+          # Own consumer group, so the docker consumers in group16-store keep their partitions
+          args: ["experiment", "group16-k8s-store"]
+          envFrom:
+            - secretRef:
+                name: app-env
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          ports:
+            - name: metrics
+              containerPort: 9091
+          volumeMounts:
+            # The binary reads auth/ca.crt relative to its workdir
+            - name: kafka-auth
+              mountPath: /usr/src/app/auth
+              readOnly: true
+      volumes:
+        - name: kafka-auth
+          secret:
+            secretName: kafka-auth
