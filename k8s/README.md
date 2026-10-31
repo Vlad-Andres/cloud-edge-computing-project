@@ -242,6 +242,7 @@ Each component runs the smallest count that covers the course's default load (~2
 - store-consumer stops at 3 because all pods write into the one Postgres on group16. rest-api stops at 4 (2 per node), because more pods would only share the same CPUs.
 - notify-consumer isn't scaled. It keeps each experiment's state in memory, and every rebalance moves partitions to a pod that never saw those experiments' configuration, so their notifications would be lost.
 - `replicas` is deliberately missing from the store-consumer and rest-api Deployments; with it, every `kubectl apply -k .` would reset what the autoscaler chose.
+- `make start` moves both consumer groups to the newest message first: a new run starts at the current events instead of replaying everything since the last run.
 
 Watch it:
 
@@ -249,6 +250,15 @@ Watch it:
 kubectl -n cec get hpa,scaledobject -w
 kubectl -n cec top pods
 ```
+
+Stress tests (from the repo root on group16, after `make start`; `make watch` in a second terminal):
+
+```sh
+make stress-rest    # hey against the REST API: DURATION=60s CONCURRENCY=50
+make stress-kafka   # PROFILE=parallel (32 experiments, 640 events/s) on the group16 topic, threshold 100
+```
+
+`stress-kafka` restores the normal setup afterwards, also on errors and Ctrl+C. Run load generators from outside the cluster if you can (e.g. `hey` from a laptop); on group16 they take CPU from the system they measure.
 
 ## Check
 
