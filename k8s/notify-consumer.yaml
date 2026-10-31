@@ -20,7 +20,7 @@ spec:
         app: notify-consumer
     spec:
       enableServiceLinks: false
-      # Same as store-consumer: lets SIGTERM stop the process (docker --init)
+      # Same as store-consumer: not PID 1; on SIGTERM it leaves the Kafka group
       shareProcessNamespace: true
       topologySpreadConstraints:
         - maxSkew: 1

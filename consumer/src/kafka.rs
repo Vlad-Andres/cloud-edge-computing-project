@@ -9,6 +9,8 @@ use prometheus::{
     register_int_counter, register_int_counter_vec, register_int_gauge_vec,
 };
 use std::error::Error;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const TUTORIAL_BROKERS: &str =
@@ -95,6 +97,11 @@ pub fn consume(
         .set("group.id", &args.consumer_group)
         .set("auto.offset.reset", "latest")
         .set("enable.auto.commit", "true")
+        // On a rebalance only the partitions that move are paused, not all of them
+        .set("partition.assignment.strategy", "cooperative-sticky")
+        // Messages fetched ahead of processing. The default (64 MiB) made pods
+        // catching up on a backlog grow to 140-250 MiB on 2 GB nodes.
+        .set("queued.max.messages.kbytes", "16384")
         .set("security.protocol", "ssl")
         .set("ssl.ca.location", "auth/ca.crt")
         .set("ssl.keystore.location", "auth/kafka.keystore.pkcs12")
@@ -109,7 +116,13 @@ pub fn consume(
     println!("Consumer group: {}", args.consumer_group);
     println!("Brokers: {}", args.brokers);
 
-    loop {
+    // On SIGTERM (scale-down, rollout) finish the current message and return:
+    // dropping the consumer commits the offsets and leaves the group, so the
+    // partitions are handed over at once instead of after session.timeout.ms.
+    let stop = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&stop))?;
+
+    while !stop.load(Ordering::Relaxed) {
         match consumer.poll(Duration::from_secs(1)) {
             Some(Ok(message)) => {
                 let record_name = message
@@ -153,6 +166,8 @@ pub fn consume(
             None => {}
         }
     }
+    println!("SIGTERM received, leaving the consumer group");
+    Ok(())
 }
 
 fn seconds_since(timestamp: Timestamp) -> Option<f64> {

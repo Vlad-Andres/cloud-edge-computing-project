@@ -16,8 +16,8 @@ spec:
         app: store-consumer
     spec:
       enableServiceLinks: false
-      # The consumer doesn't handle SIGTERM; as PID 1 it would ignore it.
-      # Sharing the pod's process namespace plays the role of docker --init.
+      # Keeps the consumer from running as PID 1, like docker --init. On SIGTERM
+      # it leaves the Kafka group, so scale-downs hand over partitions at once.
       shareProcessNamespace: true
       # Spread over the nodes when possible, but still schedule when a node is down
       topologySpreadConstraints:

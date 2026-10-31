@@ -41,5 +41,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     let mut notifier = Notifier::new(args.notifications_url, args.token, notifier_metrics);
-    consume(&args.kafka, &kafka_metrics, |event| notifier.handle(event))
+    consume(&args.kafka, &kafka_metrics, |event| notifier.handle(event))?;
+    println!("Sending the notifications still queued");
+    notifier.finish();
+    Ok(())
 }
