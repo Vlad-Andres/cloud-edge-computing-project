@@ -12,6 +12,9 @@
 #   make stress-rest            HTTP load on the REST API  [DURATION=60s CONCURRENCY=50 EXPERIMENT=<id>]
 #   make stress-kafka           Kafka load for store-consumer  [PROFILE=parallel STRESS_LAG=100]
 #   make watch                  live view of autoscalers, pods and node load
+#
+# Benchmark:
+#   make bench-rest             response time of both REST endpoints, fails above 5 ms  [EXPERIMENT=<id>]
 
 SHELL := /bin/bash
 
@@ -35,7 +38,7 @@ STRESS_LAG  ?= 100
 
 .DEFAULT_GOAL := status
 .PHONY: start stop status postgres-up postgres-down autoscalers-install autoscalers-uninstall check-docker-consumers \
-        kafka-reset watch stress-rest stress-kafka
+        kafka-reset watch stress-rest stress-kafka bench-rest
 
 start: check-docker-consumers postgres-up autoscalers-install kafka-reset
 	kubectl apply -k .
@@ -128,6 +131,13 @@ stress-rest:
 	kubectl -n cec get hpa rest-api; \
 	docker run --rm williamyeh/hey -z $(DURATION) -c $(CONCURRENCY) "$(REST_URL)/temperature/out-of-range?experiment-id=$$EXP"; \
 	kubectl -n cec get hpa rest-api
+
+# Uses the experiment with the most measurements (or EXPERIMENT=<id>): the largest response
+bench-rest:
+	@EXP="$(EXPERIMENT)"; \
+	[ -n "$$EXP" ] || EXP=$$(docker exec $(POSTGRES) sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "SELECT experiment_id FROM measurement_averages GROUP BY experiment_id ORDER BY COUNT(*) DESC LIMIT 1"'); \
+	[ -n "$$EXP" ] || { echo "No experiment found; pass one: make bench-rest EXPERIMENT=<id>"; exit 1; }; \
+	scripts/bench-rest.sh "$(REST_URL)" "$$EXP"
 
 # experiment is read-only for us, so store-consumer temporarily reads the
 # group16 topic (in its own consumer group, moved to the newest message first so

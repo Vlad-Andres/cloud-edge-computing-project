@@ -116,13 +116,34 @@ impl Store {
     fn save_sensor_temperature_measured(&mut self, reading: SensorTemperatureMeasured) {
         let timer = self.db_timer("measurement");
         let temperature = f64::from(reading.temperature);
-        let result = self.db.execute(
-            "INSERT INTO measurements
-                (measurement_id, sensor_id, experiment_id, timestamp, temperature)
-             SELECT $1, $5, experiment_id, $3, $4
-             FROM experiments
-             WHERE experiment_id = $2
-             ON CONFLICT (measurement_id, sensor_id) DO NOTHING",
+        // The reading that completes a measurement also stores its average for the REST
+        // API. It's one statement, so a replayed event can't count a sensor twice.
+        let result = self.db.query_one(
+            "WITH reading AS (
+                 INSERT INTO measurements
+                    (measurement_id, sensor_id, experiment_id, timestamp, temperature)
+                 SELECT $1, $5, experiment_id, $3, $4
+                 FROM experiments
+                 WHERE experiment_id = $2
+                 ON CONFLICT (measurement_id, sensor_id) DO NOTHING
+                 RETURNING experiment_id
+             ), average AS (
+                 INSERT INTO measurement_averages
+                    (experiment_id, timestamp, measurement_id, temperature, out_of_range)
+                 SELECT e.experiment_id, $3, $1, m.temperature,
+                        m.temperature NOT BETWEEN e.lower_threshold AND e.upper_threshold
+                 FROM reading
+                 JOIN experiments e ON e.experiment_id = reading.experiment_id
+                 CROSS JOIN LATERAL (
+                     -- the statement can't see its own reading in measurements yet
+                     SELECT (COALESCE(SUM(temperature), 0) + $4) / (COUNT(*) + 1) AS temperature,
+                            COUNT(*) + 1 AS sensors_reported
+                     FROM measurements
+                     WHERE measurement_id = $1
+                 ) m
+                 WHERE m.sensors_reported = e.sensor_count
+             )
+             SELECT COUNT(*) FROM reading",
             &[
                 &reading.measurement_id,
                 &reading.experiment,
@@ -131,7 +152,7 @@ impl Store {
                 &reading.sensor,
             ],
         );
-        match result {
+        match result.map(|row| row.get::<_, i64>(0)) {
             Ok(1) => println!("stored sensor_temperature_measured"),
             Ok(0) => println!(
                 "skipped sensor_temperature_measured (duplicate or unknown experiment: {})",

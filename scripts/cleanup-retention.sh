@@ -20,12 +20,18 @@ sql() {
 sql "DELETE FROM measurements
      WHERE timestamp < extract(epoch FROM now() - interval '1 days');"
 
+sql "DELETE FROM measurement_averages
+     WHERE timestamp < extract(epoch FROM now() - interval '1 days');"
+
 sql "DELETE FROM experiments e
      WHERE e.terminated_at < extract(epoch FROM now() - interval '1 days')
-       AND NOT EXISTS (SELECT 1 FROM measurements m WHERE m.experiment_id = e.experiment_id);"
+       AND NOT EXISTS (SELECT 1 FROM measurements m WHERE m.experiment_id = e.experiment_id)
+       AND NOT EXISTS (SELECT 1 FROM measurement_averages a WHERE a.experiment_id = e.experiment_id);"
 
-sql "VACUUM (ANALYZE) measurements, experiments;"
+sql "VACUUM (ANALYZE) measurements, measurement_averages, experiments;"
 
 sql "REINDEX TABLE CONCURRENTLY measurements;"
+
+sql "REINDEX TABLE CONCURRENTLY measurement_averages;"
 
 sql "SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;"
