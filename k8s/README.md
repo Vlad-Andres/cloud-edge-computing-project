@@ -280,3 +280,4 @@ This doesn't touch Postgres: it's the docker container on group16.
 
 - Grafana is pinned with the `node-role.kubernetes.io/control-plane` label and uses a host port, so its public address is the control-plane node's IP, `52.209.7.51`.
 - Grafana uses host port 3001 because 3000 is taken by the docker Grafana on group16.
+- During the demo the Docker consumers on group16 must be stopped; otherwise every event is written twice and every notification sent twice.
