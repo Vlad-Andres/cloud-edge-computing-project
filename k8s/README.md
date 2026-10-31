@@ -10,7 +10,7 @@ kubectl apply -k .
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
 
-The REST API Service listens on port 3003 of both nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`), and kube-proxy spreads the connections over both replicas, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
+The REST API Service listens on port 3003 of both nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`), and kube-proxy spreads the connections over all rest-api pods, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
 
 Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-external`, same mechanism), as the demo instructions ask: the course's Grafana reads the VMs' CPU and memory from the `node` job, which scrapes one node-exporter pod per node.
 
@@ -194,7 +194,25 @@ docker push vladandres/rest-api:latest
 
 On a Mac, build for the VMs with `docker buildx build --platform linux/amd64 ... --push` instead.
 
-### 4. Deploy
+### 4. Autoscalers (once per cluster)
+
+metrics-server provides pod CPU for the REST API's HPA. `--kubelet-insecure-tls` because kubeadm's kubelets use self-signed serving certificates:
+
+```sh
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml
+kubectl -n kube-system patch deployment metrics-server --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl top nodes   # works after ~1 min
+```
+
+KEDA scales store-consumer on its Kafka backlog. Install it before deploying: `kubectl apply -k .` fails on the ScaledObject while KEDA's CRDs are missing.
+
+```sh
+kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
+kubectl -n keda rollout status deploy/keda-operator
+```
+
+### 5. Deploy
 
 ```sh
 kubectl kustomize . > /dev/null   # check it renders
@@ -210,10 +228,32 @@ After pushing new images (tag `latest` is always pulled):
 kubectl -n cec rollout restart deployment store-consumer notify-consumer rest-api
 ```
 
+## Autoscaling
+
+Each component runs the smallest count that covers the course's default load (~200 events/s, 100-200 req/s). Pods are added only when that measured limit is reached.
+
+| Component | Pods | Scaled by | One pod handles |
+|---|---|---|---|
+| store-consumer | 1-3 | KEDA, on the Kafka backlog the pods report to Prometheus: pods = ceil(lag / 3000) (`k8s/store-consumer-scaledobject.yaml`) | ~580 events/s (1.7 ms per event, almost all of it the Postgres write) |
+| rest-api | 2-4 | HPA, on CPU above 500m per pod, i.e. above ~540 req/s (`k8s/rest-api-hpa.yaml`) | 200 req/s at ~370m CPU |
+| notify-consumer | fixed 2 | not scaled | |
+
+- store-consumer can run with 1 pod: while it restarts, events wait in Kafka. rest-api keeps 2, so a restarting pod never means failed requests.
+- store-consumer stops at 3 because all pods write into the one Postgres on group16. rest-api stops at 4 (2 per node), because more pods would only share the same CPUs.
+- notify-consumer isn't scaled. It keeps each experiment's state in memory, and every rebalance moves partitions to a pod that never saw those experiments' configuration, so their notifications would be lost.
+- `replicas` is deliberately missing from the store-consumer and rest-api Deployments; with it, every `kubectl apply -k .` would reset what the autoscaler chose.
+
+Watch it:
+
+```sh
+kubectl -n cec get hpa,scaledobject -w
+kubectl -n cec top pods
+```
+
 ## Check
 
 ```sh
-# Where the 4 store-consumers ended up
+# Where the store-consumers ended up
 kubectl -n cec get pods -l app=store-consumer -o wide
 
 kubectl -n cec logs -f deployment/notify-consumer

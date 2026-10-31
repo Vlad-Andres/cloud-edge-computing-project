@@ -5,8 +5,8 @@ metadata:
   labels:
     app: store-consumer
 spec:
-  # The experiment topic has 16 partitions, so each pod gets 4
-  replicas: 4
+  # No replicas: KEDA sets the count (1-3, store-consumer-scaledobject.yaml).
+  # With it, every kubectl apply -k would reset what KEDA chose.
   selector:
     matchLabels:
       app: store-consumer
@@ -19,8 +19,7 @@ spec:
       # The consumer doesn't handle SIGTERM; as PID 1 it would ignore it.
       # Sharing the pod's process namespace plays the role of docker --init.
       shareProcessNamespace: true
-      # Spread over the nodes when possible (2/2 on two, 2/1/1 on three),
-      # but still schedule when a node is down
+      # Spread over the nodes when possible, but still schedule when a node is down
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

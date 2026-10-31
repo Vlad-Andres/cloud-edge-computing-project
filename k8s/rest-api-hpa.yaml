@@ -1,0 +1,26 @@
+# Scales the REST API on CPU (needs metrics-server, see README).
+#
+# One pod answers 200 req/s (the course's top default rate) at ~370m CPU, so
+# 2 pods cover the default load. A 3rd is added above 500m per pod, i.e.
+# above ~540 req/s in total.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rest-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rest-api
+  # 2, not 1: while one pod restarts, the other keeps answering
+  minReplicas: 2
+  # 2 per node; more pods would only share the same CPUs
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          # Absolute CPU per pod, so it doesn't depend on the pods' CPU request
+          type: AverageValue
+          averageValue: 500m
