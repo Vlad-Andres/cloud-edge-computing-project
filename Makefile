@@ -97,6 +97,7 @@ postgres-up:
 	until docker exec $(POSTGRES) pg_isready -q; do sleep 1; done
 
 postgres-down:
+	-docker exec $(POSTGRES) sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "TRUNCATE experiments CASCADE"'
 	docker stop $(POSTGRES) 2>/dev/null || true
 
 # --kubelet-insecure-tls: kubeadm's kubelets use self-signed certificates.
