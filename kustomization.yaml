@@ -53,3 +53,4 @@ configMapGenerator:
   - name: grafana-dashboards
     files:
       - monitoring/grafana/dashboards/store-consumer.json
+      - monitoring/grafana/dashboards/deployment-cost.json
