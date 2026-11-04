@@ -31,9 +31,17 @@ Then open `http://localhost:3003/health`. It should show `{"status":"ok"}`.
 
 - `app.py`: the API code
 - `requirements.txt`: Python packages
-- `Dockerfile`: builds the container (uses gunicorn as the server)
+- `Dockerfile`: builds the container (uses granian as the server)
 
 ## What it needs from the DB
 
-- `measurements`: one row per sensor reading, with `measurement_id`, `sensor_id`, `experiment_id`, `timestamp`, `temperature`
-- `experiments`: `sensor_count`, `lower_threshold`, `upper_threshold`, `started_at`
+- `measurement_averages`: one row per complete measurement, with `experiment_id`, `timestamp`, `temperature`, `out_of_range`
+- `experiments`: `started_at`
+
+## Benchmark
+
+`make bench-rest` measures both endpoints one request at a time and fails if a median response is above 5 ms. For the same at a different limit or against another server:
+
+```bash
+TARGET_MS=10 scripts/bench-rest.sh http://localhost:3003 <experiment-id>
+```

@@ -18,9 +18,20 @@ CREATE TABLE measurements (
     experiment_id   TEXT NOT NULL REFERENCES experiments (experiment_id),
     timestamp       DOUBLE PRECISION NOT NULL,
     temperature     DOUBLE PRECISION NOT NULL,
-    -- one row per sensor reading; the REST API averages the sensors per measurement_id
+    -- one row per sensor reading
     PRIMARY KEY (measurement_id, sensor_id)
 );
 
-CREATE INDEX measurements_experiment_time_idx ON measurements (experiment_id, timestamp)
-    INCLUDE (measurement_id, temperature);
+-- for the foreign key: deleting an experiment checks that no measurements are left
+CREATE INDEX measurements_experiment_idx ON measurements (experiment_id);
+
+CREATE TABLE measurement_averages (
+    experiment_id   TEXT NOT NULL REFERENCES experiments (experiment_id),
+    timestamp       DOUBLE PRECISION NOT NULL,
+    measurement_id  TEXT NOT NULL,
+    temperature     DOUBLE PRECISION NOT NULL,
+    out_of_range    BOOLEAN NOT NULL,
+    -- one row per measurement whose sensors have all reported; the REST API reads only
+    -- this table, in key order and from the index alone
+    PRIMARY KEY (experiment_id, timestamp, measurement_id) INCLUDE (temperature, out_of_range)
+);

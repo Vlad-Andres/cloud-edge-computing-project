@@ -1,0 +1,418 @@
+[
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  },
+  {
+    "start_time": 0,
+    "researcher": "stress-parallel@example.invalid",
+    "num_sensors": 2,
+    "sample_rate": 100,
+    "start_temperature": 20,
+    "stabilization_samples": 20,
+    "carry_out_samples": 1800,
+    "temp_range": {
+      "lower_threshold": 18,
+      "upper_threshold": 22
+    }
+  }
+]

@@ -1,9 +1,10 @@
 # database
 
-Postgres database for the Temperature Observability microservice. `init.sql` defines two tables:
+Postgres database for the Temperature Observability microservice. `init.sql` defines three tables:
 
 - `experiments`: config + lifecycle phase per experiment. Probably won't be read by the REST API — this exists so `store-consumer` can recover an experiment's state after a restart instead of relying only on in-memory tracking. Basically added recovery method for data.
-- `measurements`: what the REST API reads from (`experiment_id`, `timestamp`, `temperature`, `out_of_range`), one row per averaged sensor reading during the carry-out phase.
+- `measurements`: one row per sensor reading.
+- `measurement_averages`: what the REST API reads from (`experiment_id`, `timestamp`, `temperature`, `out_of_range`), one row per measurement. `store-consumer` writes it when the last sensor of a measurement reports, so requests read finished averages instead of aggregating sensor rows.
 
 ## Run
 
@@ -34,6 +35,31 @@ docker exec -it postgres psql -U groupdb -d groupdb -c '\dt'
 
 ```bash
 docker stop postgres
+```
+
+## Add measurement_averages to a running database
+
+`init.sql` doesn't run again on an existing database. In this order, from the repo root on group16:
+
+```bash
+# 1. Create the table and fill it from measurements
+docker exec -i postgres psql -U groupdb -d groupdb < database/add-measurement-averages.sql
+```
+
+2. Deploy the new `store-consumer` image.
+
+```bash
+# 3. Add the measurements completed while the old consumer was still running
+docker exec -i postgres psql -U groupdb -d groupdb < database/add-measurement-averages.sql
+```
+
+4. Deploy the new `rest-api` image.
+
+```bash
+# 5. Replace the index only the old REST API query used (the running database calls it measurements_cov_idx)
+docker exec postgres psql -U groupdb -d groupdb \
+    -c 'CREATE INDEX CONCURRENTLY measurements_experiment_idx ON measurements (experiment_id)' \
+    -c 'DROP INDEX CONCURRENTLY measurements_cov_idx'
 ```
 
 ## .env

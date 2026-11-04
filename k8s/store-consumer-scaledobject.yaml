@@ -1,0 +1,29 @@
+# Scales store-consumer on its Kafka backlog (needs KEDA, see README). KEDA
+# creates and drives the HPA for it, so there is no separate HPA.
+#
+# One pod stores ~580 events/s (1.7 ms per event, almost all of it the
+# Postgres write); the course's default load is ~200 events/s. So 1 pod is
+# enough normally, and more are added only when it falls behind.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: store-consumer
+spec:
+  scaleTargetRef:
+    name: store-consumer
+  # 1 is enough: while it restarts, the events wait in Kafka
+  minReplicaCount: 1
+  # All pods write into the same Postgres on group16
+  maxReplicaCount: 3
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.cec.svc:9090
+        # Same query as the dashboard's "Backlog (lag)" panel
+        query: |
+          sum(clamp_min(
+            max by (partition) (kafka_partition_high_watermark{job="store-consumer"})
+            - max by (partition) (kafka_partition_consumed_offset{job="store-consumer"}), 0))
+        # Target lag per pod: pods = ceil(lag / 3000). 3000 is ~5 s of one
+        # pod's work; a pod that keeps up shows a lag of a few hundred.
+        threshold: "3000"

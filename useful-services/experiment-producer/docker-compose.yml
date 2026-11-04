@@ -67,6 +67,24 @@ services:
       - --config-file
       - /config.json
 
+  # 32 experiments at 20 events/s each, for about 3 minutes: 640 events/s
+  # spread over the partitions, so more consumer pods actually help.
+  parallel-producer:
+    image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
+    profiles: [parallel]
+    init: true
+    restart: "no"
+    volumes:
+      - ${AUTH_DIR:-../../auth}:/experiment-producer/auth:ro
+      - ./loads/parallel.json:/config.json:ro
+    command:
+      - --brokers
+      - ${BROKERS:-kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092}
+      - --topic
+      - ${TOPIC:?Set TOPIC to the writable Kafka topic}
+      - --config-file
+      - /config.json
+
   const-500-producer:
     image: ${PRODUCER_IMAGE:-dclandau/cec-experiment-producer:latest}
     profiles: [const-500]

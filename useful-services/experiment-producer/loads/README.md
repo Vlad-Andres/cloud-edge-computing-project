@@ -22,6 +22,12 @@ One sustained load: 20 sensors, 100 ms interval per sensor.
 
 Expected rate: `20 * (1000 / 100) = 200 events/s`, which is above the provider's 100 messages/s reference.
 
+## `parallel.json`
+
+32 experiments start together, each with 2 sensors at a 100 ms interval: `32 * 2 * (1000 / 100) = 640 events/s` for about 3 minutes (1800 samples).
+
+Each experiment's events go to one partition (the key is the experiment ID), so the single-experiment profiles above only ever keep one consumer busy. 32 experiments spread over almost all 16 partitions, which is what autoscaling the consumers needs to make a difference.
+
 ## Formula
 
 `sample_rate` is the delay between samples in milliseconds. It is not the rate in messages/second.
