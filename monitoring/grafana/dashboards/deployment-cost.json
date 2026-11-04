@@ -1,7 +1,7 @@
 {
   "uid": "deployment-cost",
   "title": "Deployment cost",
-  "description": "CPU and memory of the VMs the deployment runs on, the course's measure of cost. Same queries as the cec-tutorials \"Deployment Cost\" dashboard; the course's Grafana reads the same node metrics from this Prometheus on <vm-ip>:3008.",
+  "description": "CPU and memory of the VMs the system runs on. Similar queries to the cec-tutorials dashboard where we read node metrics from Prometheus on <vm-ip>:3008.",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "10s",
@@ -41,7 +41,7 @@
     {
       "type": "stat",
       "title": "CPU used",
-      "description": "Share of all CPUs of all nodes that is busy, now. Same formula as the course tutorial's \"Deployment Cost\" dashboard.",
+      "description": "CPU usage across all busy nodes. Same formula as cec-tutorial.",
       "targets": [
         {
           "datasource": {
@@ -76,7 +76,7 @@
               }
             ]
           },
-          "decimals": 1
+          "decimals": 2
         },
         "overrides": []
       },
@@ -106,7 +106,7 @@
     {
       "type": "stat",
       "title": "Memory used",
-      "description": "Memory in use on all nodes together, now (MemTotal - MemAvailable, as in the course tutorial), next to the memory the nodes have in total.",
+      "description": "Memory in use on all nodes together, (MemTotal - MemAvailable).",
       "targets": [
         {
           "datasource": {
@@ -172,7 +172,7 @@
     {
       "type": "stat",
       "title": "CPU time used (selected range)",
-      "description": "Busy CPU time of all nodes together within the selected time range: the CPU cost of that period (1 h = one core busy for an hour). To get the cost of one test run, drag across a graph to select its time window. Prometheus keeps 2 h of data, so longer ranges only count the last 2 h.",
+      "description": "CPU time of all nodes together within the selected time range: the CPU cost of that period.. Prometheus keeps 2 h of data, so longer ranges only count the last 2 h.",
       "targets": [
         {
           "datasource": {
@@ -231,7 +231,7 @@
     {
       "type": "stat",
       "title": "Average memory used (selected range)",
-      "description": "Memory in use on all nodes together, averaged over the selected time range: the memory cost of that period. To get the cost of one test run, drag across a graph to select its time window.",
+      "description": "Memory in use on all nodes together, averaged over the selected time range.",
       "targets": [
         {
           "datasource": {
@@ -289,8 +289,8 @@
     },
     {
       "type": "timeseries",
-      "title": "CPU usage (%)",
-      "description": "Busy share of each node's CPUs; \"all nodes\" is the share of all CPUs together, the course tutorial's formula. ip-10-0-1-151 is group16 (control plane, Postgres, Grafana), ip-10-0-1-230 is client14. Mean and max in the legend cover the selected range.",
+      "title": "CPU usage %",
+      "description": "How much each node/VM uses the share of all CPUs. ip-10-0-1-151 is group16 (control plane, Postgres, Grafana), ip-10-0-1-230 is client14.",
       "targets": [
         {
           "datasource": {
@@ -377,7 +377,7 @@
     {
       "type": "timeseries",
       "title": "Memory used",
-      "description": "Memory in use per node (MemTotal - MemAvailable, as in the course tutorial) and on all nodes together; the dashed line is the nodes' total memory. Cache the kernel can free when needed doesn't count as used. Mean and max in the legend cover the selected range.",
+      "description": "Memory in use per node (MemTotal - MemAvailable, as in the course tutorial) and on all nodes together. the dashed line is the nodes total memory.",
       "targets": [
         {
           "datasource": {
@@ -513,7 +513,7 @@
     {
       "type": "timeseries",
       "title": "CPU per component (% of all CPUs)",
-      "description": "CPU used by each consumer (all its pods together) as a share of all CPUs, stacked with everything else on the VMs: the OS, Kubernetes, Postgres, the REST API and monitoring. The top of the stack equals \"all nodes\" in CPU usage above. Only the consumers report their own CPU time, so the other components are only visible together.",
+      "description": "CPU used by each consumer (all its pods together) as a share of all CPUs.",
       "targets": [
         {
           "datasource": {
@@ -530,7 +530,7 @@
             "uid": "${datasource}"
           },
           "expr": "100 * (sum(rate(node_cpu_seconds_total{job=\"node\", mode!=\"idle\"}[1m])) - (sum(rate(process_cpu_seconds_total{job=~\"store-consumer|notify-consumer\"}[1m])) or vector(0))) / count(node_cpu_seconds_total{job=\"node\", mode=\"idle\"})",
-          "legendFormat": "everything else",
+          "legendFormat": "other",
           "refId": "B"
         }
       ],
@@ -552,7 +552,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "everything else"
+              "options": "other"
             },
             "properties": [
               {
@@ -600,7 +600,7 @@
     {
       "type": "timeseries",
       "title": "Memory per component",
-      "description": "Memory used by each consumer (all its pods together), stacked with everything else on the VMs: the OS, Kubernetes, Postgres, the REST API and monitoring. The top of the stack is about \"all nodes\" in Memory used above; the consumers report their resident memory, which the kernel counts slightly differently. Only the consumers report their own memory, so the other components are only visible together.",
+      "description": "Memory used by each consumer (all its pods together). ",
       "targets": [
         {
           "datasource": {
@@ -617,7 +617,7 @@
             "uid": "${datasource}"
           },
           "expr": "sum(node_memory_MemTotal_bytes{job=\"node\"} - node_memory_MemAvailable_bytes{job=\"node\"}) - (sum(process_resident_memory_bytes{job=~\"store-consumer|notify-consumer\"}) or vector(0))",
-          "legendFormat": "everything else",
+          "legendFormat": "other",
           "refId": "B"
         }
       ],
@@ -638,7 +638,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "everything else"
+              "options": "other"
             },
             "properties": [
               {
@@ -698,7 +698,7 @@
     {
       "type": "timeseries",
       "title": "Load and consumer pods",
-      "description": "What the cost above depends on: events/s each consumer handles (left axis) and how many of its pods run (right axis). KEDA scales store-consumer on its Kafka backlog; notify-consumer is fixed at 2. The REST API exports no metrics, so its pod count isn't here: kubectl -n cec get hpa rest-api.",
+      "description": "What the cost above depends on: events/s each consumer handles (left axis) and how many of its pods run (right axis).",
       "targets": [
         {
           "datasource": {
