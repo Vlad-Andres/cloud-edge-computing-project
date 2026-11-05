@@ -3,7 +3,7 @@
 Small async API that reads temperature data from our Postgres database. It is an RSGI app for granian: each worker process runs one event loop, so a request waiting for Postgres doesn't hold a thread.
 It runs in Docker on port **3003**. Read-only: it never writes to the DB.
 
-Clients ask in bursts (the course's tester sends ~70 requests at once, all for one experiment), so one read serves a whole burst: requests that arrive while an experiment's rows are being read wait for that read, and the rows are reused for `CACHE_TTL_MS` (200 ms). Both endpoints are answered from the same rows. Design reasons and measurements: `DESIGN-DECISIONS.md` in the repo root.
+Clients ask in bursts (the course's tester sends ~70 requests at once, all for one experiment), so one read serves a whole burst: requests that arrive while an experiment's rows are being read wait for that read, and the rows are reused for `CACHE_TTL_MS` (200 ms). Both endpoints are answered from the same rows.
 
 | Setting | Default | |
 |---|---|---|

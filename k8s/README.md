@@ -10,7 +10,7 @@ kubectl apply -k .
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
 
-The REST API Service listens on port 3003 of group16's private IP (`externalIPs`: `10.0.1.151` behind `52.209.7.51`). The rest-api pods run on group16 too, and `externalTrafficPolicy: Local` answers each request there: traffic between the nodes goes through Tailscale (flannel `--iface=tailscale0`), which made forwarded requests ~5x slower (`DESIGN-DECISIONS.md`). Nothing else may use port 3003 on group16 (e.g. the docker REST API).
+The REST API Service listens on port 3003 of group16's private IP (`externalIPs`: `10.0.1.151` behind `52.209.7.51`). The rest-api pods run on group16 too, and `externalTrafficPolicy: Local` answers each request there: traffic between the nodes goes through Tailscale (flannel `--iface=tailscale0`), which made forwarded requests ~5x slower (a burst of 70 requests: p50 76 ms forwarded, 15 ms answered locally). Nothing else may use port 3003 on group16 (e.g. the docker REST API).
 
 Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-external`, same mechanism), as the demo instructions ask: the course's Grafana reads the VMs' CPU and memory from the `node` job, which scrapes one node-exporter pod per node.
 
