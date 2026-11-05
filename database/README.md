@@ -39,7 +39,7 @@ docker stop postgres
 
 ## Commits don't wait for the disk
 
-`make start` sets `synchronous_commit = off` for the database. store-consumer commits every sensor reading on its own, and waiting for each commit's write-ahead log to reach the disk limited all pods together to ~450 writes/s (test with 1,280 events/s, 5 Nov). What other connections see doesn't change: a reading and its average are still one transaction, visible completely or not at all. Only a crash of Postgres itself can lose the last ~0.5 s of commits.
+`make start` sets `synchronous_commit = off` for the database. When store-consumer committed every sensor reading on its own, waiting for each commit's write-ahead log to reach the disk limited all pods together to ~450 writes/s (test with 1,280 events/s, 5 Nov). It now writes up to 500 readings per statement and commit (`consumer/src/bin/store-consumer/store.rs`), so there are far fewer commits to wait for. What other connections see doesn't change: a reading and its average are still one transaction, visible completely or not at all. Only a crash of Postgres itself can lose the last ~0.5 s of commits.
 
 By hand, and to undo it (new connections pick it up, so restart store-consumer afterwards: `kubectl -n cec rollout restart deploy/store-consumer`):
 

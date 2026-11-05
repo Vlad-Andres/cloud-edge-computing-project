@@ -95,9 +95,9 @@ postgres-up:
 	    -p 5432:5432 postgres:16-alpine; \
 	fi
 	until docker exec $(POSTGRES) pg_isready -q; do sleep 1; done
-	@# store-consumer commits every reading on its own, and each commit waited for
-	@# the write-ahead log to reach the disk: ~450 writes/s at most. Without the wait
-	@# a Postgres crash can lose the last ~0.5 s of writes, never half a transaction.
+	@# Each commit waited for the write-ahead log to reach the disk: with a commit
+	@# per reading ~450 writes/s at most (store-consumer writes batches now). Without
+	@# the wait a Postgres crash can lose the last ~0.5 s of writes, never half a transaction.
 	docker exec $(POSTGRES) sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -qc "ALTER DATABASE \"$$POSTGRES_DB\" SET synchronous_commit = off"'
 
 postgres-down:

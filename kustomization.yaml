@@ -22,7 +22,7 @@ resources:
 images:
   - name: store-consumer
     newName: vladandres/store-consumer
-    newTag: latest
+    newTag: exp-batch
   - name: notify-consumer
     newName: vladandres/notify-consumer
     newTag: latest
