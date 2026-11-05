@@ -9,6 +9,7 @@ Clients ask in bursts (the course's tester sends ~70 requests at once, all for o
 |---|---|---|
 | `GRANIAN_WORKERS` | 2 (Kubernetes: 1 per pod) | worker processes |
 | `CACHE_TTL_MS` | 200 | how long rows are reused; answers are at most this much older than the database; 0 = only share reads in progress |
+| `DB_POOL_MAX` | 16 | database connections per worker process (4 stay open); pods x workers x this must stay below Postgres' 100 together with the consumers |
 
 ## Endpoints
 

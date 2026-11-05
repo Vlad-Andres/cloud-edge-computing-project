@@ -75,6 +75,11 @@ spec:
             # while the other restarts. 2 processes per pod made bursts slower.
             - name: GRANIAN_WORKERS
               value: "1"
+            # Rows are reused for 1 s instead of 200 ms: with ~100 experiments queried
+            # at once, each one was read ~4 times a second per pod, and group16's CPU
+            # ran out at ~1,000 req/s. Answers are at most 1 s older than the database.
+            - name: CACHE_TTL_MS
+              value: "1000"
           ports:
             - name: http
               containerPort: 3003

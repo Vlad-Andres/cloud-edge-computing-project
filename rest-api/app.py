@@ -42,8 +42,16 @@ DB_CONNINFO = make_conninfo(
 
 # Connection pool: reuse connections instead of opening one per request.
 # Autocommit: a single read needs no BEGIN and COMMIT, two round trips to the database.
+# A burst over many experiments starts ~20 reads per process at once; with 4
+# connections they queued in ~5 rounds (80 ms per read while Postgres ran 1-2
+# queries). Total: pods x DB_POOL_MAX, below Postgres' 100 with the consumers.
 pool = AsyncConnectionPool(
-    DB_CONNINFO, min_size=1, max_size=4, timeout=5, open=False, kwargs={"autocommit": True}
+    DB_CONNINFO,
+    min_size=4,
+    max_size=int(os.environ.get("DB_POOL_MAX", "16")),
+    timeout=5,
+    open=False,
+    kwargs={"autocommit": True},
 )
 pool_lock = asyncio.Lock()
 
