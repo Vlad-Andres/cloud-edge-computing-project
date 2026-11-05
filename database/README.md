@@ -37,6 +37,17 @@ docker exec -it postgres psql -U groupdb -d groupdb -c '\dt'
 docker stop postgres
 ```
 
+## Commits don't wait for the disk
+
+`make start` sets `synchronous_commit = off` for the database. store-consumer commits every sensor reading on its own, and waiting for each commit's write-ahead log to reach the disk limited all pods together to ~450 writes/s (test with 1,280 events/s, 5 Nov). What other connections see doesn't change: a reading and its average are still one transaction, visible completely or not at all. Only a crash of Postgres itself can lose the last ~0.5 s of commits.
+
+By hand, and to undo it (new connections pick it up, so restart store-consumer afterwards: `kubectl -n cec rollout restart deploy/store-consumer`):
+
+```bash
+docker exec postgres psql -U groupdb -d groupdb -c 'ALTER DATABASE groupdb SET synchronous_commit = off'
+docker exec postgres psql -U groupdb -d groupdb -c 'ALTER DATABASE groupdb RESET synchronous_commit'
+```
+
 ## Add measurement_averages to a running database
 
 `init.sql` doesn't run again on an existing database. In this order, from the repo root on group16:
