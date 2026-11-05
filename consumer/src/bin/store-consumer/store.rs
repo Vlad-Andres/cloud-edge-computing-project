@@ -1,6 +1,6 @@
 use consumer::events::{Event, ExperimentConfigured, SensorTemperatureMeasured, StageChange};
 use consumer::kafka::HANDLE_BUCKETS;
-use postgres::Client;
+use postgres::{Client, Statement};
 use prometheus::{HistogramVec, IntCounterVec, register_histogram_vec, register_int_counter_vec};
 use std::sync::Arc;
 
@@ -33,14 +33,47 @@ impl Metrics {
     }
 }
 
+// Stores a sensor reading. The reading that completes a measurement also stores its
+// average for the REST API. It's one statement, so a replayed event can't count a
+// sensor twice.
+const INSERT_READING: &str = "WITH reading AS (
+         INSERT INTO measurements
+            (measurement_id, sensor_id, experiment_id, timestamp, temperature)
+         SELECT $1, $5, experiment_id, $3, $4
+         FROM experiments
+         WHERE experiment_id = $2
+         ON CONFLICT (measurement_id, sensor_id) DO NOTHING
+         RETURNING experiment_id
+     ), average AS (
+         INSERT INTO measurement_averages
+            (experiment_id, timestamp, measurement_id, temperature, out_of_range)
+         SELECT e.experiment_id, $3, $1, m.temperature,
+                m.temperature NOT BETWEEN e.lower_threshold AND e.upper_threshold
+         FROM reading
+         JOIN experiments e ON e.experiment_id = reading.experiment_id
+         CROSS JOIN LATERAL (
+             -- the statement can't see its own reading in measurements yet
+             SELECT (COALESCE(SUM(temperature), 0) + $4) / (COUNT(*) + 1) AS temperature,
+                    COUNT(*) + 1 AS sensors_reported
+             FROM measurements
+             WHERE measurement_id = $1
+         ) m
+         WHERE m.sensors_reported = e.sensor_count
+     )
+     SELECT COUNT(*) FROM reading";
+
 pub struct Store {
     db: Client,
     metrics: Arc<Metrics>,
+    // Prepared once: sent as text, Postgres parsed and planned the statement again
+    // for every reading, and each reading took two round trips instead of one.
+    insert_reading: Statement,
 }
 
 impl Store {
-    pub fn new(db: Client, metrics: Arc<Metrics>) -> Self {
-        Store { db, metrics }
+    pub fn new(mut db: Client, metrics: Arc<Metrics>) -> Result<Self, postgres::Error> {
+        let insert_reading = db.prepare(INSERT_READING)?;
+        Ok(Store { db, metrics, insert_reading })
     }
 
     pub fn save(&mut self, event: Event) {
@@ -116,34 +149,8 @@ impl Store {
     fn save_sensor_temperature_measured(&mut self, reading: SensorTemperatureMeasured) {
         let timer = self.db_timer("measurement");
         let temperature = f64::from(reading.temperature);
-        // The reading that completes a measurement also stores its average for the REST
-        // API. It's one statement, so a replayed event can't count a sensor twice.
         let result = self.db.query_one(
-            "WITH reading AS (
-                 INSERT INTO measurements
-                    (measurement_id, sensor_id, experiment_id, timestamp, temperature)
-                 SELECT $1, $5, experiment_id, $3, $4
-                 FROM experiments
-                 WHERE experiment_id = $2
-                 ON CONFLICT (measurement_id, sensor_id) DO NOTHING
-                 RETURNING experiment_id
-             ), average AS (
-                 INSERT INTO measurement_averages
-                    (experiment_id, timestamp, measurement_id, temperature, out_of_range)
-                 SELECT e.experiment_id, $3, $1, m.temperature,
-                        m.temperature NOT BETWEEN e.lower_threshold AND e.upper_threshold
-                 FROM reading
-                 JOIN experiments e ON e.experiment_id = reading.experiment_id
-                 CROSS JOIN LATERAL (
-                     -- the statement can't see its own reading in measurements yet
-                     SELECT (COALESCE(SUM(temperature), 0) + $4) / (COUNT(*) + 1) AS temperature,
-                            COUNT(*) + 1 AS sensors_reported
-                     FROM measurements
-                     WHERE measurement_id = $1
-                 ) m
-                 WHERE m.sensors_reported = e.sensor_count
-             )
-             SELECT COUNT(*) FROM reading",
+            &self.insert_reading,
             &[
                 &reading.measurement_id,
                 &reading.experiment,
@@ -153,7 +160,8 @@ impl Store {
             ],
         );
         match result.map(|row| row.get::<_, i64>(0)) {
-            Ok(1) => println!("stored sensor_temperature_measured"),
+            // No line per stored reading: at 1,000 readings/s that is 1,000 log lines/s
+            Ok(1) => {}
             Ok(0) => println!(
                 "skipped sensor_temperature_measured (duplicate or unknown experiment: {})",
                 reading.experiment
