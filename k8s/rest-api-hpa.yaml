@@ -14,8 +14,8 @@ spec:
     name: rest-api
   # 2, not 1: while one pod restarts, the other keeps answering
   minReplicas: 2
-  # 2 per node; more pods would only share the same CPUs
-  maxReplicas: 4
+  # All on group16 (rest-api.yaml): more pods would only share its 2 CPUs
+  maxReplicas: 3
   metrics:
     - type: Resource
       resource:

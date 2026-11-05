@@ -10,6 +10,11 @@ scrape_configs:
     static_configs:
       - targets: ["notify-consumer:9091"]
 
+  # The app's metrics (/metrics on 3003) and granian's (9091)
+  - job_name: rest-api
+    static_configs:
+      - targets: ["rest-api:3003", "rest-api:9091"]
+
   - job_name: postgres
     static_configs:
       - targets: ["postgres-exporter:9187"]

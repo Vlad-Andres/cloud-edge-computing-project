@@ -7,13 +7,15 @@ metadata:
 spec:
   selector:
     app: rest-api
-  # kube-proxy accepts traffic for these node IPs on port 3003 and balances it
-  # over the replicas, wherever they run. They are the private IPs AWS maps
-  # the public ones to. NodePort can't use 3003.
+  # kube-proxy accepts traffic for this node IP on port 3003. It is the private
+  # IP AWS maps the public one to. NodePort can't use 3003.
   externalIPs:
     - 10.0.1.151 # control plane (group16), public 52.209.7.51
-    - 10.0.1.230 # worker, public 18.203.181.249
-    - 10.0.1.72 # worker (ip-10-0-1-72), public 52.17.123.73
+  # Answered only by pods on the node the request arrived at. Traffic between the
+  # nodes goes through Tailscale (flannel --iface=tailscale0), and a burst of
+  # requests forwarded to the other node took ~5x as long. The pods run on
+  # group16 (below), so a request never has to leave it.
+  externalTrafficPolicy: Local
   ports:
     - name: http
       port: 3003
@@ -26,8 +28,15 @@ metadata:
   labels:
     app: rest-api
 spec:
-  # No replicas: the HPA sets the count (2-4, rest-api-hpa.yaml). With it,
+  # No replicas: the HPA sets the count (2-3, rest-api-hpa.yaml). With it,
   # every kubectl apply -k would reset what the HPA chose.
+  # A new pod is ready before an old one stops, so group16 always has one
+  # (requests reaching a node without a pod are dropped, see the Service)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: rest-api
@@ -37,18 +46,16 @@ spec:
         app: rest-api
     spec:
       enableServiceLinks: false
-      # Spread over the nodes when possible, but still schedule when a node is
-      # down: the scheduler also counts a NotReady node, so with DoNotSchedule
-      # a 3rd and 4th pod would stay Pending while such a node is registered
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          # Count only pods of the current version, not old ones still shutting down
-          matchLabelKeys: [pod-template-hash]
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: rest-api
+      # On group16, where the requests arrive (52.209.7.51) and Postgres runs: a
+      # pod elsewhere would only be reached through Tailscale. Without group16
+      # the API has no database anyway.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -64,11 +71,32 @@ spec:
               value: postgres
             - name: POSTGRES_PORT
               value: "5432"
+            # 2 pods x 1 process: group16 has 2 CPUs, and 2 pods keep one answering
+            # while the other restarts. 2 processes per pod made bursts slower.
+            - name: GRANIAN_WORKERS
+              value: "1"
+            # Compress answers for clients that send Accept-Encoding: gzip (app.py)
+            - name: GZIP
+              value: "1"
           ports:
             - name: http
               containerPort: 3003
+            # granian's metrics; the app's own are on /metrics of the http port
+            - name: metrics
+              containerPort: 9091
+          # Measured ~70 MiB per pod; the limit keeps a leak from taking the node
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
           readinessProbe:
             httpGet:
               path: /health
               port: http
             periodSeconds: 10
+            # Under overload /health waits behind the other requests; a 1 s timeout
+            # would take the pod out of service and overload the others more
+            timeoutSeconds: 5
+            failureThreshold: 6

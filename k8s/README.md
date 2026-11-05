@@ -10,7 +10,7 @@ kubectl apply -k .
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
 
-The REST API Service listens on port 3003 of all nodes' private IPs (`externalIPs`: `10.0.1.151` behind `52.209.7.51`, `10.0.1.230` behind `18.203.181.249`, `10.0.1.72` behind `X.X.X.X`), and kube-proxy spreads the connections over all rest-api pods, whichever address they arrive at. Nothing else may use port 3003 on those nodes (e.g. the docker REST API on group16).
+The REST API Service listens on port 3003 of group16's private IP (`externalIPs`: `10.0.1.151` behind `52.209.7.51`). The rest-api pods run on group16 too, and `externalTrafficPolicy: Local` answers each request there: traffic between the nodes goes through Tailscale (flannel `--iface=tailscale0`), which made forwarded requests ~5x slower (`DESIGN-DECISIONS.md`). Nothing else may use port 3003 on group16 (e.g. the docker REST API).
 
 Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-external`, same mechanism), as the demo instructions ask: the course's Grafana reads the VMs' CPU and memory from the `node` job, which scrapes one node-exporter pod per node.
 
@@ -236,7 +236,7 @@ Each component runs the smallest count that covers the course's default load (~2
 | Component | Pods | Scaled by | One pod handles |
 |---|---|---|---|
 | store-consumer | 1-3 | KEDA, on the Kafka backlog the pods report to Prometheus: pods = ceil(lag / 3000) (`k8s/store-consumer-scaledobject.yaml`) | ~580 events/s (1.7 ms per event, almost all of it the Postgres write) |
-| rest-api | 2-4 | HPA, on CPU above 500m per pod, i.e. above ~540 req/s (`k8s/rest-api-hpa.yaml`) | 200 req/s at ~370m CPU |
+| rest-api | 2-3, all on group16 | HPA, on CPU above 500m per pod (`k8s/rest-api-hpa.yaml`) | 2 pods: 2,000 req/s over 20 experiments, p95 108 ms (k6 from client14) |
 | notify-consumer | fixed 2 | not scaled | |
 
 - store-consumer can run with 1 pod: while it restarts, events wait in Kafka. rest-api keeps 2, so a restarting pod never means failed requests.

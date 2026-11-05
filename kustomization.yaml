@@ -28,7 +28,7 @@ images:
     newTag: latest
   - name: rest-api
     newName: vladandres/rest-api
-    newTag: latest
+    newTag: exp-gzip
 
 # .env and auth/ are gitignored; they must exist on the machine running kubectl
 secretGenerator:

@@ -21,6 +21,25 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: instance
 
+  # Two targets per REST API pod: the app's metrics on /metrics of the http port
+  # (DB read and request time) and granian's on the metrics port (threads,
+  # queued requests). instance = <pod>:<port name>
+  - job_name: rest-api
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [cec]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: rest-api
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        regex: http|metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_pod_container_port_name]
+        separator: ":"
+        target_label: instance
+
   - job_name: postgres
     static_configs:
       - targets: ["postgres-exporter:9187"]
