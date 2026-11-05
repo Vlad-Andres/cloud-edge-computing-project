@@ -10,7 +10,7 @@ kubectl apply -k .
 
 The consumers use their own consumer groups (`group16-k8s-store`, `group16-k8s-notify`), so they run next to the docker setup on group16 without taking its partitions.
 
-The REST API Service listens on port 3003 of group16's private IP (`externalIPs`: `10.0.1.151` behind `52.209.7.51`). The rest-api pods run on group16 too, and `externalTrafficPolicy: Local` answers each request there: traffic between the nodes goes through Tailscale (flannel `--iface=tailscale0`), which made forwarded requests ~5x slower (a burst of 70 requests: p50 76 ms forwarded, 15 ms answered locally). Nothing else may use port 3003 on group16 (e.g. the docker REST API).
+The REST API Service listens on port 3003 of group16's private IP (`externalIPs`: `10.0.1.151` behind `52.209.7.51`). There is one rest-api pod per node, and `externalTrafficPolicy: Cluster` lets group16 forward about half the requests to the pod on client14 over the VPC (0.5 ms between the nodes), so client14's CPUs answer them. With all pods on group16, its 2 CPUs ran out at ~1,000 req/s. Through Tailscale, forwarded requests were ~5x slower (a burst of 70 requests: p50 76 ms forwarded, 15 ms answered locally), which is why pod traffic now uses the VPC (see Setting up). Nothing else may use port 3003 on group16 (e.g. the docker REST API).
 
 Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-external`, same mechanism), as the demo instructions ask: the course's Grafana reads the VMs' CPU and memory from the `node` job, which scrapes one node-exporter pod per node.
 
@@ -18,7 +18,7 @@ Prometheus is also exposed on port 3008 of both nodes (Service `prometheus-exter
 
 ### 1. Cluster
 
-kubeadm cluster (v1.34) over Tailscale, Flannel as CNI. All nodes advertise their Tailscale IP, so cluster traffic goes over the VPN.
+kubeadm cluster (v1.34), Flannel as CNI. The nodes register with their Tailscale IP, so the API server and kubelets talk over the VPN. Pod traffic between the nodes goes over the VPC instead (flannel `--iface=ens5`): Tailscale encrypts every packet in software and left pods 1230-byte packets, the VPC gives 0.5 ms between the nodes and 8951-byte packets. Every node must therefore be an AWS VM in the same VPC (`10.0.1.0/24`) with an `ens5` interface.
 
 | Node                       | Role                                | Tailscale IP    | Public IP      |
 |----------------------------|-------------------------------------|-----------------|----------------|
@@ -104,13 +104,21 @@ sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 
-Flannel, pinned to the `tailscale0` interface:
+Flannel, pinned to the VPC interface `ens5`:
 
 ```sh
 curl -sSL -o kube-flannel.yml https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-sed -i 's/^\(\s*\)- --kube-subnet-mgr$/&\n\1- --iface=tailscale0/' kube-flannel.yml
+sed -i 's/^\(\s*\)- --kube-subnet-mgr$/&\n\1- --iface=ens5/' kube-flannel.yml
 kubectl apply -f kube-flannel.yml
 kubectl -n kube-flannel rollout status ds/kube-flannel-ds
+```
+
+A running cluster still on `tailscale0` switches with the patch below; pods on different nodes can't reach each other for about a minute while flannel restarts. Afterwards both nodes show their `10.0.1.x` address, and new pods get the bigger packets. Back to Tailscale: the same patch with `--iface=tailscale0`, then restart the pods created in between, whose packets are too big for it.
+
+```sh
+kubectl -n kube-flannel patch ds kube-flannel-ds --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args/2","value":"--iface=ens5"}]'
+kubectl -n kube-flannel rollout status ds/kube-flannel-ds
+kubectl get nodes -o custom-columns='NODE:.metadata.name,FLANNEL_IP:.metadata.annotations.flannel\.alpha\.coreos\.com/public-ip'
 ```
 
 #### Worker (`ip-10-0-1-230`)
@@ -236,11 +244,11 @@ Each component runs the smallest count that covers the course's default load (~2
 | Component | Pods | Scaled by | One pod handles |
 |---|---|---|---|
 | store-consumer | 1-3 | KEDA, on the Kafka backlog the pods report to Prometheus: pods = ceil(lag / 3000) (`k8s/store-consumer-scaledobject.yaml`) | ~580 events/s (1.7 ms per event, almost all of it the Postgres write) |
-| rest-api | 2-3, all on group16 | HPA, on CPU above 500m per pod (`k8s/rest-api-hpa.yaml`) | 2 pods: 2,000 req/s over 20 experiments, p95 108 ms (k6 from client14) |
+| rest-api | 2-3, one per node | HPA, on CPU above 500m per pod (`k8s/rest-api-hpa.yaml`) | ~450 req/s over ~100 experiments, on group16's CPUs (2 pods there: ~900 req/s before group16's CPU was full; k6 from client14) |
 | notify-consumer | fixed 2 | not scaled | |
 
 - store-consumer can run with 1 pod: while it restarts, events wait in Kafka. rest-api keeps 2, so a restarting pod never means failed requests.
-- store-consumer stops at 3 because all pods write into the one Postgres on group16. rest-api stops at 4 (2 per node), because more pods would only share the same CPUs.
+- store-consumer stops at 3 because all pods write into the one Postgres on group16. rest-api stops at 3: each pod keeps its own copy of the rows and reads Postgres itself, so more pods would mostly add database reads.
 - notify-consumer isn't scaled. It keeps each experiment's state in memory, and every rebalance moves partitions to a pod that never saw those experiments' configuration, so their notifications would be lost.
 - `replicas` is deliberately missing from the store-consumer and rest-api Deployments; with it, every `kubectl apply -k .` would reset what the autoscaler chose.
 - `make start` moves both consumer groups to the newest message first: a new run starts at the current events instead of replaying everything since the last run.

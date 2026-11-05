@@ -11,11 +11,10 @@ spec:
   # IP AWS maps the public one to. NodePort can't use 3003.
   externalIPs:
     - 10.0.1.151 # control plane (group16), public 52.209.7.51
-  # Answered only by pods on the node the request arrived at. Traffic between the
-  # nodes goes through Tailscale (flannel --iface=tailscale0), and a burst of
-  # requests forwarded to the other node took ~5x as long. The pods run on
-  # group16 (below), so a request never has to leave it.
-  externalTrafficPolicy: Local
+  # Spread over all pods: group16 forwards about half the requests to the pod on
+  # client14 over the VPC (flannel --iface=ens5, 0.5 ms between the nodes), so
+  # client14's CPUs answer them. Through Tailscale this was ~5x slower.
+  externalTrafficPolicy: Cluster
   ports:
     - name: http
       port: 3003
@@ -30,8 +29,7 @@ metadata:
 spec:
   # No replicas: the HPA sets the count (2-3, rest-api-hpa.yaml). With it,
   # every kubectl apply -k would reset what the HPA chose.
-  # A new pod is ready before an old one stops, so group16 always has one
-  # (requests reaching a node without a pod are dropped, see the Service)
+  # A new pod is ready before an old one stops
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -46,16 +44,17 @@ spec:
         app: rest-api
     spec:
       enableServiceLinks: false
-      # On group16, where the requests arrive (52.209.7.51) and Postgres runs: a
-      # pod elsewhere would only be reached through Tailscale. Without group16
-      # the API has no database anyway.
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: node-role.kubernetes.io/control-plane
-                    operator: Exists
+      # One pod per node: group16's 2 CPUs ran out at ~1,000 req/s with all of
+      # them there. pod-template-hash: a rollout spreads the new pods too.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: rest-api
+          matchLabelKeys:
+            - pod-template-hash
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -71,8 +70,8 @@ spec:
               value: postgres
             - name: POSTGRES_PORT
               value: "5432"
-            # 2 pods x 1 process: group16 has 2 CPUs, and 2 pods keep one answering
-            # while the other restarts. 2 processes per pod made bursts slower.
+            # 1 process per pod: 2 processes per pod made bursts slower
+            # (measured with both pods on group16's 2 CPUs)
             - name: GRANIAN_WORKERS
               value: "1"
             # Rows are reused for 1 s instead of 200 ms: with ~100 experiments queried
@@ -102,3 +101,9 @@ spec:
             # would take the pod out of service and overload the others more
             timeoutSeconds: 5
             failureThreshold: 6
+          # Keeps answering while kube-proxy stops sending it requests; without the
+          # pause a rollout dropped a request that reached a stopping pod
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]

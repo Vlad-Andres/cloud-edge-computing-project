@@ -4,6 +4,8 @@ Adds a VM (Ubuntu, like the AWS VMs) to the group's Kubernetes cluster as a work
 
 The cluster is kubeadm v1.34 over Tailscale with Flannel as CNI; the control plane is `ip-10-0-1-151` (group16, Tailscale IP `100.122.68.0`). Nothing has to change in the manifests: networking, node-exporter and new pods pick up the node by themselves.
 
+Pod traffic between the nodes goes over the VPC (flannel `--iface=ens5`), so the new machine must be an AWS VM in the same VPC (`10.0.1.0/24`) with an `ens5` interface. Tailscale is still needed: the node registers with its Tailscale IP.
+
 ## 1. Tailscale
 
 Join the group's tailnet (ask for an invite or auth key). The printed IP is the node's address in the cluster:

@@ -14,7 +14,8 @@ spec:
     name: rest-api
   # 2, not 1: while one pod restarts, the other keeps answering
   minReplicas: 2
-  # All on group16 (rest-api.yaml): more pods would only share its 2 CPUs
+  # One per node, the 3rd on either (rest-api.yaml); each pod keeps its own
+  # copy of the rows, so more pods also mean more reads from Postgres
   maxReplicas: 3
   metrics:
     - type: Resource
