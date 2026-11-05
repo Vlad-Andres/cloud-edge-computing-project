@@ -75,9 +75,6 @@ spec:
             # while the other restarts. 2 processes per pod made bursts slower.
             - name: GRANIAN_WORKERS
               value: "1"
-            # Compress answers for clients that send Accept-Encoding: gzip (app.py)
-            - name: GZIP
-              value: "1"
           ports:
             - name: http
               containerPort: 3003

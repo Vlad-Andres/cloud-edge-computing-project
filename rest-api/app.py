@@ -10,7 +10,6 @@ An RSGI app for granian (--interface rsgi): each worker process runs an event lo
 so a request waiting for Postgres doesn't hold a thread and a burst is served at once.
 """
 import asyncio
-import gzip
 import math
 import os
 import sys
@@ -80,32 +79,6 @@ ROWS = Counter(
     "shared (another request's read in progress) or cached",
     ["source"],
 )
-ACCEPTS_GZIP = Counter(
-    "rest_api_accepts_gzip_total",
-    "Data requests by whether the client accepts gzip (Accept-Encoding)",
-    ["gzip"],
-)
-
-# GZIP=1: compress responses for clients that accept it, a ~23 KB answer becomes
-# ~7 KB. The full answers are compressed once per read, like their JSON.
-GZIP = os.environ.get("GZIP", "0") == "1"
-GZIP_MIN_BYTES = 1400  # smaller bodies fit in one packet anyway
-
-
-def accepts_gzip(header):
-    for part in header.split(","):
-        name, _, params = part.partition(";")
-        if name.strip().lower() in ("gzip", "*"):
-            q = params.strip().lower()
-            return not (q.startswith("q=") and float(q[2:] or 0) == 0)
-    return False
-
-
-def maybe_compress(plain, gzip_ok):
-    """(body, gzipped): compressed when the client accepts it and it is worth it."""
-    if gzip_ok and len(plain) >= GZIP_MIN_BYTES:
-        return gzip.compress(plain, compresslevel=1, mtime=0), True
-    return plain, False
 
 # One measurement = all sensors with the same measurement_id, and its temperature is
 # their average. store-consumer stores that average when the last sensor reports, so
@@ -130,35 +103,26 @@ reading = {}  # experiment_id -> Future of the read in progress
 
 
 class Rows:
-    __slots__ = ("read_at", "timestamps", "points", "bodies", "out_of_range_json")
+    __slots__ = ("read_at", "timestamps", "points", "all_json", "out_of_range_json")
 
     def __init__(self, rows):
         self.read_at = time.monotonic()
         self.timestamps = [ts for ts, _, _ in rows]
         self.points = [{"timestamp": ts, "temperature": temp} for ts, temp, _ in rows]
-        # name -> (plain body, (body, gzipped) for clients that accept gzip), built
-        # once for the answers every request of a burst shares
-        self.bodies = {}
+        # The full answer is built once, on first use, for every request of a burst
+        self.all_json = None
         self.out_of_range_json = orjson.dumps(
             [p for p, (_, _, out) in zip(self.points, rows) if out]
         )
 
-    def shared(self, name, gzip_ok, make):
-        if name not in self.bodies:
-            plain = make()
-            self.bodies[name] = (plain, maybe_compress(plain, True))
-        plain, compressed = self.bodies[name]
-        return compressed if gzip_ok else (plain, False)
-
-    def between(self, start, end, gzip_ok):
+    def between(self, start, end):
         lo = bisect_left(self.timestamps, start)
         hi = bisect_right(self.timestamps, end)
         if lo == 0 and hi == len(self.points):
-            return self.shared("all", gzip_ok, lambda: orjson.dumps(self.points))
-        return maybe_compress(orjson.dumps(self.points[lo:hi]), gzip_ok)
-
-    def out_of_range(self, gzip_ok):
-        return self.shared("out_of_range", gzip_ok, lambda: self.out_of_range_json)
+            if self.all_json is None:
+                self.all_json = orjson.dumps(self.points)
+            return self.all_json
+        return orjson.dumps(self.points[lo:hi])
 
 
 async def read_rows(experiment_id):
@@ -205,22 +169,13 @@ def number(value):
 
 
 JSON = [("content-type", "application/json")]
-JSON_VARY = JSON + [("vary", "accept-encoding")]
-JSON_GZIP = JSON_VARY + [("content-encoding", "gzip")]
 
 
 def json_error(proto, status, message):
     proto.response_bytes(status, JSON, orjson.dumps({"error": message}) + b"\n")
 
 
-def send_points(proto, body, gzipped):
-    if gzipped:
-        proto.response_bytes(200, JSON_GZIP, body)
-    else:
-        proto.response_bytes(200, JSON_VARY if GZIP else JSON, body)
-
-
-async def temperature(proto, args, gzip_ok):
+async def temperature(proto, args):
     experiment_id = args.get("experiment-id", [None])[0]
     try:
         start = number(args["start-time"][0])
@@ -230,15 +185,15 @@ async def temperature(proto, args, gzip_ok):
     if not experiment_id:
         return json_error(proto, 400, "experiment-id is required")
     rows = await experiment_rows(experiment_id)
-    send_points(proto, *rows.between(start, end, gzip_ok))
+    proto.response_bytes(200, JSON, rows.between(start, end))
 
 
-async def out_of_range(proto, args, gzip_ok):
+async def out_of_range(proto, args):
     experiment_id = args.get("experiment-id", [None])[0]
     if not experiment_id:
         return json_error(proto, 400, "experiment-id is required")
     rows = await experiment_rows(experiment_id)
-    send_points(proto, *rows.out_of_range(gzip_ok))
+    proto.response_bytes(200, JSON, rows.out_of_range_json)
 
 
 DATA_ENDPOINTS = {"/temperature": temperature, "/temperature/out-of-range": out_of_range}
@@ -262,11 +217,7 @@ async def app(scope, proto):
         if scope.method not in ("GET", "HEAD"):
             proto.response_bytes(405, JSON, b'{"error":"method not allowed"}\n')
         elif path in DATA_ENDPOINTS:
-            wants_gzip = accepts_gzip(scope.headers.get("accept-encoding", ""))
-            ACCEPTS_GZIP.labels("yes" if wants_gzip else "no").inc()
-            await DATA_ENDPOINTS[path](
-                proto, parse_qs(scope.query_string, keep_blank_values=True), GZIP and wants_gzip
-            )
+            await DATA_ENDPOINTS[path](proto, parse_qs(scope.query_string, keep_blank_values=True))
             name = "temperature" if path == "/temperature" else "out_of_range"
             REQUEST.labels(name).observe(time.perf_counter() - started)
         elif path == "/health":

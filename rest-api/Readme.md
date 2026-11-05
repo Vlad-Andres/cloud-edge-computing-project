@@ -9,7 +9,6 @@ Clients ask in bursts (the course's tester sends ~70 requests at once, all for o
 |---|---|---|
 | `GRANIAN_WORKERS` | 2 (Kubernetes: 1 per pod) | worker processes |
 | `CACHE_TTL_MS` | 200 | how long rows are reused; answers are at most this much older than the database; 0 = only share reads in progress |
-| `GZIP` | 0 (Kubernetes: 1) | compress answers for clients that send `Accept-Encoding: gzip` |
 
 ## Endpoints
 
@@ -50,7 +49,7 @@ Then open `http://localhost:3003/health`. It should show `{"status":"ok"}`.
 
 Prometheus reads two sources; the *Event pipeline* dashboard shows them under *Bottlenecks*:
 
-- `GET /metrics` on port 3003, from the app: `rest_api_db_read_seconds` (one read of an experiment's rows), `rest_api_request_duration_seconds` (the whole request in the app, per endpoint), `rest_api_rows_lookups_total` (rows read, shared with a read in progress, or reused) and `rest_api_accepts_gzip_total`. The buckets include the default ones (5 ms ... 2.5 s), so they compare with a histogram measured by a client.
+- `GET /metrics` on port 3003, from the app: `rest_api_db_read_seconds` (one read of an experiment's rows), `rest_api_request_duration_seconds` (the whole request in the app, per endpoint) and `rest_api_rows_lookups_total` (rows read, shared with a read in progress, or reused). The buckets include the default ones (5 ms ... 2.5 s), so they compare with a histogram measured by a client.
 - Port 9091, from granian: connections, requests handled, worker restarts.
 
 ## Benchmark

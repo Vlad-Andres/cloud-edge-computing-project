@@ -1194,7 +1194,7 @@
     {
       "type": "timeseries",
       "title": "REST API: where each request's rows came from",
-      "description": "Requests per second by source of their rows. read = this request read Postgres; shared = another request's read was running and it waited for that one; reused = rows read less than CACHE_TTL_MS (200 ms) ago. During a burst for one experiment nearly everything is shared or reused, so Postgres sees one read per process instead of one per request. Accepts gzip = requests whose client sends Accept-Encoding: gzip; those get a ~3.5x smaller answer.",
+      "description": "Requests per second by source of their rows. read = this request read Postgres; shared = another request's read was running and it waited for that one; reused = rows read less than CACHE_TTL_MS (200 ms) ago. During a burst for one experiment nearly everything is shared or reused, so Postgres sees one read per process instead of one per request.",
       "targets": [
         {
           "datasource": {
@@ -1222,15 +1222,6 @@
           "expr": "sum(rate(rest_api_rows_lookups_total{job=\"rest-api\", source=\"cached\"}[1m]))",
           "legendFormat": "reused (< 200 ms old)",
           "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(rate(rest_api_accepts_gzip_total{job=\"rest-api\", gzip=\"yes\"}[1m]))",
-          "legendFormat": "accepts gzip",
-          "refId": "D"
         }
       ],
       "fieldConfig": {
