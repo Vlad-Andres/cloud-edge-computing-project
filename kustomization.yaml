@@ -28,7 +28,8 @@ images:
     newTag: latest
   - name: rest-api
     newName: vladandres/rest-api
-    newTag: latest
+    # The async FastAPI version of this branch (latest is the Flask one)
+    newTag: async-nicu
 
 # .env and auth/ are gitignored; they must exist on the machine running kubectl
 secretGenerator:
