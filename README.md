@@ -1,5 +1,7 @@
 # cloud-edge-computing-project
 
+![architecture](architecture-diagram.png)
+
 On group16, from the repo root, with `.env` and `auth/` present:
 
     make start    
