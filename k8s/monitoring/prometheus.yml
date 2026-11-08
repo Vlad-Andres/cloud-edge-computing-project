@@ -2,8 +2,6 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
-  # Every consumer pod is scraped on its own. job = the pod's app label, so the
-  # dashboard queries (sum by (job)) add up all replicas like before.
   - job_name: consumers
     kubernetes_sd_configs:
       - role: pod
@@ -21,11 +19,27 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: instance
 
+
+  - job_name: rest-api
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [cec]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: rest-api
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        regex: http|metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_pod_container_port_name]
+        separator: ":"
+        target_label: instance
+
   - job_name: postgres
     static_configs:
       - targets: ["postgres-exporter:9187"]
 
-  # CPU and memory of every node; instance = the node's name
   - job_name: node
     kubernetes_sd_configs:
       - role: pod

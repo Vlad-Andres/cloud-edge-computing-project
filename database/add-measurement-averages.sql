@@ -1,5 +1,5 @@
 -- Adds measurement_averages to a running database and fills it from measurements.
--- Safe to run again: it only adds the measurements that are missing.
+--  only adds the measurements that are missing.
 CREATE TABLE IF NOT EXISTS measurement_averages (
     experiment_id   TEXT NOT NULL REFERENCES experiments (experiment_id),
     timestamp       DOUBLE PRECISION NOT NULL,

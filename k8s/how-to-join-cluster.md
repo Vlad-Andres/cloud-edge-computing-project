@@ -1,8 +1,11 @@
 # How to join the cluster
 
-Adds a VM (Ubuntu, like the AWS VMs) to the group's Kubernetes cluster as a worker. Steps 1–7 run on your VM; step 8 runs on the control plane (group16).
+Adds a VM to the group's Kubernetes cluster as a worker.
+Steps 1–7 run on your VM; step 8 runs on the control plane (group16).
 
-The cluster is kubeadm v1.34 over Tailscale with Flannel as CNI; the control plane is `ip-10-0-1-151` (group16, Tailscale IP `100.122.68.0`). Nothing has to change in the manifests: networking, node-exporter and new pods pick up the node by themselves.
+The cluster is kubeadm v1.34 over Tailscale with Flannel as CNI; the control plane is `ip-10-0-1-151` (group16, Tailscale IP `100.122.68.0`). 
+
+Pod traffic between the nodes goes over the VPC (flannel `--iface=ens5`), so the new machine must be an AWS VM in the same VPC (`10.0.1.0/24`) with an `ens5` interface. Tailscale is still needed: the node registers with its Tailscale IP.
 
 ## 1. Tailscale
 

@@ -3,7 +3,6 @@ kind: ServiceAccount
 metadata:
   name: prometheus
 ---
-# Pod discovery only needs to read pods in this namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -39,8 +38,7 @@ spec:
       port: 9090
       targetPort: http
 ---
-# The demo's Grafana reads the node CPU/memory metrics from <vm-ip>:3008.
-# kube-proxy accepts traffic for these node IPs on 3008, like the REST API.
+#reads the node CPU/memory metrics from <vm-ip>:3008.
 apiVersion: v1
 kind: Service
 metadata:
@@ -51,9 +49,9 @@ spec:
   selector:
     app: prometheus
   externalIPs:
-    - 10.0.1.151 # control plane (group16), public 52.209.7.51
-    - 10.0.1.230 # worker, public 18.203.181.249
-    - 10.0.1.72 # worker (ip-10-0-1-72), public 52.17.123.73
+    - 10.0.1.151 # group16
+    - 10.0.1.230 # worker
+    - 10.0.1.72 # worker 
 
   ports:
     - name: http
@@ -104,6 +102,5 @@ spec:
         - name: config
           configMap:
             name: prometheus-config
-        # 2h retention, so losing it on restart is fine
         - name: data
           emptyDir: {}

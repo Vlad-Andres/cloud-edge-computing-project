@@ -7,13 +7,14 @@ metadata:
 spec:
   selector:
     app: rest-api
-  # kube-proxy accepts traffic for these node IPs on port 3003 and balances it
-  # over the replicas, wherever they run. They are the private IPs AWS maps
-  # the public ones to. NodePort can't use 3003.
+  # kube-proxy accepts traffic for this node IP on port 3003. It is the private
+  # IP AWS maps the public one to. NodePort can't use 3003.
   externalIPs:
     - 10.0.1.151 # control plane (group16), public 52.209.7.51
-    - 10.0.1.230 # worker, public 18.203.181.249
-    - 10.0.1.72 # worker (ip-10-0-1-72), public 52.17.123.73
+  # Spread over all pods: group16 forwards about half the requests to the pod on
+  # client14 over the VPC (flannel --iface=ens5, 0.5 ms between the nodes), so
+  # client14's CPUs answer them. Through Tailscale this was ~5x slower.
+  externalTrafficPolicy: Cluster
   ports:
     - name: http
       port: 3003
@@ -26,8 +27,14 @@ metadata:
   labels:
     app: rest-api
 spec:
-  # No replicas: the HPA sets the count (2-4, rest-api-hpa.yaml). With it,
+  # No replicas: the HPA sets the count (2-3, rest-api-hpa.yaml). With it,
   # every kubectl apply -k would reset what the HPA chose.
+  # A new pod is ready before an old one stops
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: rest-api
@@ -37,18 +44,17 @@ spec:
         app: rest-api
     spec:
       enableServiceLinks: false
-      # Spread over the nodes when possible, but still schedule when a node is
-      # down: the scheduler also counts a NotReady node, so with DoNotSchedule
-      # a 3rd and 4th pod would stay Pending while such a node is registered
+      # One pod per node: group16's 2 CPUs ran out at ~1,000 req/s with all of
+      # them there. pod-template-hash: a rollout spreads the new pods too.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          # Count only pods of the current version, not old ones still shutting down
-          matchLabelKeys: [pod-template-hash]
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               app: rest-api
+          matchLabelKeys:
+            - pod-template-hash
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -64,11 +70,40 @@ spec:
               value: postgres
             - name: POSTGRES_PORT
               value: "5432"
+            # 1 process per pod: 2 processes per pod made bursts slower
+            # (measured with both pods on group16's 2 CPUs)
+            - name: GRANIAN_WORKERS
+              value: "1"
+            # Rows are reused for 1 s instead of 200 ms: with ~100 experiments queried
+            # at once, each one was read ~4 times a second per pod, and group16's CPU
+            # ran out at ~1,000 req/s. Answers are at most 1 s older than the database.
+            - name: CACHE_TTL_MS
+              value: "1000"
           ports:
             - name: http
               containerPort: 3003
+            # granian's metrics; the app's own are on /metrics of the http port
+            - name: metrics
+              containerPort: 9091
+          # Measured ~70 MiB per pod; the limit keeps a leak from taking the node
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
           readinessProbe:
             httpGet:
               path: /health
               port: http
             periodSeconds: 10
+            # Under overload /health waits behind the other requests; a 1 s timeout
+            # would take the pod out of service and overload the others more
+            timeoutSeconds: 5
+            failureThreshold: 6
+          # Keeps answering while kube-proxy stops sending it requests; without the
+          # pause a rollout dropped a request that reached a stopping pod
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]

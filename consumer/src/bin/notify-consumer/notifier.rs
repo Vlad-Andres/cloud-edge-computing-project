@@ -38,7 +38,7 @@ struct Experiment {
     readings: HashMap<String, (f64, usize, Instant)>,
 }
 
-/// Notifications sent at the same time. A POST normally takes ~30 ms, so this
+/// Notifications sent at the same time. A POST normally takes 30 ms so this
 /// is several hundred per second.
 const SEND_WORKERS: usize = 16;
 /// Notifications waiting for a free worker. When the queue is full, handle()

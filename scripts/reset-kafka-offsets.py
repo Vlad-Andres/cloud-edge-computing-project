@@ -1,10 +1,6 @@
-"""Moves consumer groups to the newest message of every partition of a topic.
+"""Moves consumer groups to the newest message of every partition of a topic. make start runs this before deploying
 
-make start runs this before deploying, so a new cluster run starts at the
-current events instead of replaying everything since the last run. Kafka only
-accepts it while no consumer of the group is running.
-
-Usage (in a container with the group's credentials mounted at /auth):
+Usage 
     python reset-kafka-offsets.py <topic> <group> [<group> ...]
 """
 import sys

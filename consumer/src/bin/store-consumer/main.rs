@@ -41,6 +41,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = request.respond(response);
         }
     });
-    let mut store = Store::new(db, metrics);
-    consume(&args.kafka, &kafka_metrics, |event| store.save(event))
+    let store = Store::new(db, metrics)?;
+    consume(&args.kafka, &kafka_metrics, store)
 }

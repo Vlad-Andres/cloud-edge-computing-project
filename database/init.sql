@@ -31,7 +31,7 @@ CREATE TABLE measurement_averages (
     measurement_id  TEXT NOT NULL,
     temperature     DOUBLE PRECISION NOT NULL,
     out_of_range    BOOLEAN NOT NULL,
-    -- one row per measurement whose sensors have all reported; the REST API reads only
+    -- one row per measurement whose sensors have all reported. the REST API reads only
     -- this table, in key order and from the index alone
     PRIMARY KEY (experiment_id, timestamp, measurement_id) INCLUDE (temperature, out_of_range)
 );

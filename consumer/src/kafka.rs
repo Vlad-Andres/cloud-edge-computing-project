@@ -16,15 +16,30 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const TUTORIAL_BROKERS: &str =
     "kafka.cec.dlandau.nl:19092,kafka.cec.dlandau.nl:29092,kafka.cec.dlandau.nl:39092";
 
-/// Buckets for time spent handling one event (e.g. one DB round-trip).
+/// Buckets for time spent handling one event 
 pub const HANDLE_BUCKETS: &[f64] = &[
     0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
 ];
-/// Buckets for event age; large values show up when a backlog builds.
+/// Buckets for event age
 pub const END_TO_END_BUCKETS: &[f64] = &[
     0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0,
 ];
 const WATERMARK_INTERVAL: Duration = Duration::from_secs(5);
+/// How long the consume loop waits for a message
+const POLL_TIMEOUT: Duration = Duration::from_millis(50);
+
+/// What the consume loop hands the decoded events to. A closure is a handler too.
+pub trait Handler {
+    fn handle(&mut self, event: Event);
+    /// No message came within POLL_TIMEOUT, or the consumer is about to leave the group
+    fn idle(&mut self) {}
+}
+
+impl<F: FnMut(Event)> Handler for F {
+    fn handle(&mut self, event: Event) {
+        self(event)
+    }
+}
 
 #[derive(Args)]
 pub struct KafkaArgs {
@@ -89,7 +104,7 @@ impl KafkaMetrics {
 pub fn consume(
     args: &KafkaArgs,
     metrics: &KafkaMetrics,
-    mut handle: impl FnMut(Event),
+    mut handler: impl Handler,
 ) -> Result<(), Box<dyn Error>> {
     let mut config = ClientConfig::new();
     config
@@ -116,14 +131,13 @@ pub fn consume(
     println!("Consumer group: {}", args.consumer_group);
     println!("Brokers: {}", args.brokers);
 
-    // On SIGTERM (scale-down, rollout) finish the current message and return:
-    // dropping the consumer commits the offsets and leaves the group, so the
-    // partitions are handed over at once instead of after session.timeout.ms.
+    // On SIGTERM (scale-down, rollout) finish the current message, let the handle finish what it kept 
+    
     let stop = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&stop))?;
 
     while !stop.load(Ordering::Relaxed) {
-        match consumer.poll(Duration::from_secs(1)) {
+        match consumer.poll(POLL_TIMEOUT) {
             Some(Ok(message)) => {
                 let record_name = message
                     .headers()
@@ -140,7 +154,7 @@ pub fn consume(
                             .with_label_values(&[&record_name])
                             .inc();
                         let started = Instant::now();
-                        handle(event);
+                        handler.handle(event);
                         metrics
                             .handle_duration
                             .with_label_values(&[&record_name])
@@ -163,9 +177,10 @@ pub fn consume(
                     .set(message.offset() + 1);
             }
             Some(Err(error)) => eprintln!("Consumer error: {error}"),
-            None => {}
+            None => handler.idle(),
         }
     }
+    handler.idle();
     println!("SIGTERM received, leaving the consumer group");
     Ok(())
 }
@@ -176,8 +191,7 @@ fn seconds_since(timestamp: Timestamp) -> Option<f64> {
     Some((now_ms - produced_ms).max(0) as f64 / 1000.0)
 }
 
-/// Polls the newest offset of every partition on a separate client, so the
-/// main consume loop is never blocked by these broker round-trips.
+/// Polls the newest offset of every partition on a separate client
 fn spawn_watermark_poller(config: ClientConfig, topic: String, high_watermark: IntGaugeVec) {
     std::thread::spawn(move || {
         let client: BaseConsumer = match config.create() {
