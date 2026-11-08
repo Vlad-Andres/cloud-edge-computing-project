@@ -1,17 +1,19 @@
 # cloud-edge-computing-project
 
-## Monitoring service
+On group16, from the repo root, with `.env` and `auth/` present:
 
-```sh
-docker run --rm -d --init \
-  --network cec \
-  --name store-consumer \
-  -p 9091:9091 \
-  --env-file .env \
-  -v "$(pwd)/auth":/usr/src/app/auth \
-  store-consumer-img "experiment" "group16-store"
-```
+    make start    
+    make stop
+    make status
 
+##archiecture
+
+- consumer/README.md: store-consumer and notify-consumer (Rust)
+- rest-api/Readme.md: REST API (Python, granian)
+- database/README.md: schema
+- k8s/README.md: manifests, cluster setup, building and pushing images
+- monitoring/grafana/: dashboards, deployed by k8s
+- scripts/: benchmark, retention cleanup, Kafka offset reset
 
 ## Data retention
 

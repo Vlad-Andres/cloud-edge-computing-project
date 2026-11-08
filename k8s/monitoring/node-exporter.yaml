@@ -1,5 +1,4 @@
-# One node_exporter per node: CPU and memory of the VMs, read by the demo's
-# Grafana through Prometheus on <vm-ip>:3008 (see DEMO-INSTRUCTIONS.md)
+# read by the demo's Grafana on <vm-ip>:3008
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -16,7 +15,6 @@ spec:
         app: node-exporter
     spec:
       enableServiceLinks: false
-      # The host's process table, so the figures are the VM's, not the pod's
       hostPID: true
       tolerations:
         - key: node-role.kubernetes.io/control-plane

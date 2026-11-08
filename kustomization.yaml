@@ -1,6 +1,5 @@
 # Deploys the whole project to Kubernetes: kubectl apply -k .
-# Lives in the repo root so the generators can read the existing files
-# (monitoring/, .env, auth/) without copying them.
+# Lives in the repo root 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -30,7 +29,7 @@ images:
     newName: vladandres/rest-api
     newTag: exp-pool
 
-# .env and auth/ are gitignored; they must exist on the machine running kubectl
+# .env and auth/ must exist on the machine running kubectl
 secretGenerator:
   - name: app-env
     envs:

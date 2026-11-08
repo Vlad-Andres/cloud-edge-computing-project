@@ -1,76 +1,22 @@
 # database
-
 Postgres database for the Temperature Observability microservice. `init.sql` defines three tables:
 
-- `experiments`: config + lifecycle phase per experiment. Probably won't be read by the REST API — this exists so `store-consumer` can recover an experiment's state after a restart instead of relying only on in-memory tracking. Basically added recovery method for data.
-- `measurements`: one row per sensor reading.
-- `measurement_averages`: what the REST API reads from (`experiment_id`, `timestamp`, `temperature`, `out_of_range`), one row per measurement. `store-consumer` writes it when the last sensor of a measurement reports, so requests read finished averages instead of aggregating sensor rows.
+- `experiments`: config + lifecycle phase per experiment
+- `measurements`: one row per sensor reading
+- `measurement_averages`: what the REST API reads from, one row per measurement `store-consumer` writes it when the last sensor of a measurement reports
 
-## Run
+## run
+make postgres-up
 
-```bash
-docker network create cec   # if not already created
 
-docker run \
-    --rm -d \
-    --name postgres \
-    --network cec \
-    -e POSTGRES_DB=groupdb \
-    -e POSTGRES_USER=groupdb \
-    -e POSTGRES_PASSWORD=admin \
-    -v "$(pwd)/database/init.sql":/docker-entrypoint-initdb.d/init.sql \
-    -v pgdata:/var/lib/postgresql/data \
-    -p 5432:5432 \
-    postgres:16-alpine
-```
 
-- `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` read by the image's entrypoint on first boot to create the database and role. 
-- `init.sql` only runs once, against an empty data directory. After changing the schema, `docker rm -f postgres && docker volume rm pgdata` before re-running the command above, or apply the change manually with `psql`.
-- `pgdata` is a Docker-managed named volume, so data survives container restarts - `docker volume inspect pgdata`.
-- `--network cec` must match the network of `store-consumer` and later the REST API so they can reach this container by name (`POSTGRES_HOST=postgres`).
+## synchronous_commit
+
+`make start` sets `synchronous_commit = off` for the database. To undo it, reset it and restart store-consumer.
 
 ```bash
-docker exec -it postgres psql -U groupdb -d groupdb -c '\dt'
-```
-
-```bash
-docker stop postgres
-```
-
-## Commits don't wait for the disk
-
-`make start` sets `synchronous_commit = off` for the database. When store-consumer committed every sensor reading on its own, waiting for each commit's write-ahead log to reach the disk limited all pods together to ~450 writes/s (test with 1,280 events/s, 5 Nov). It now writes up to 500 readings per statement and commit (`consumer/src/bin/store-consumer/store.rs`), so there are far fewer commits to wait for. What other connections see doesn't change: a reading and its average are still one transaction, visible completely or not at all. Only a crash of Postgres itself can lose the last ~0.5 s of commits.
-
-By hand, and to undo it (new connections pick it up, so restart store-consumer afterwards: `kubectl -n cec rollout restart deploy/store-consumer`):
-
-```bash
-docker exec postgres psql -U groupdb -d groupdb -c 'ALTER DATABASE groupdb SET synchronous_commit = off'
 docker exec postgres psql -U groupdb -d groupdb -c 'ALTER DATABASE groupdb RESET synchronous_commit'
-```
-
-## Add measurement_averages to a running database
-
-`init.sql` doesn't run again on an existing database. In this order, from the repo root on group16:
-
-```bash
-# 1. Create the table and fill it from measurements
-docker exec -i postgres psql -U groupdb -d groupdb < database/add-measurement-averages.sql
-```
-
-2. Deploy the new `store-consumer` image.
-
-```bash
-# 3. Add the measurements completed while the old consumer was still running
-docker exec -i postgres psql -U groupdb -d groupdb < database/add-measurement-averages.sql
-```
-
-4. Deploy the new `rest-api` image.
-
-```bash
-# 5. Replace the index only the old REST API query used (the running database calls it measurements_cov_idx)
-docker exec postgres psql -U groupdb -d groupdb \
-    -c 'CREATE INDEX CONCURRENTLY measurements_experiment_idx ON measurements (experiment_id)' \
-    -c 'DROP INDEX CONCURRENTLY measurements_cov_idx'
+kubectl -n cec rollout restart deploy/store-consumer
 ```
 
 ## .env

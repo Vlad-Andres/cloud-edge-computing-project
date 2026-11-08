@@ -1,14 +1,14 @@
-"""Temperature Observability REST API (read-only).
-
+#Temperature Observability REST API (read-only)
+"""
 Endpoints:
   GET /temperature?experiment-id=&start-time=&end-time=
   GET /temperature/out-of-range?experiment-id=
   GET /health
   GET /metrics (Prometheus)
-
-An RSGI app for granian (--interface rsgi): each worker process runs an event loop,
-so a request waiting for Postgres doesn't hold a thread and a burst is served at once.
 """
+
+
+
 import asyncio
 import math
 import os
@@ -31,7 +31,6 @@ from prometheus_client import (
 from psycopg.conninfo import make_conninfo
 from psycopg_pool import AsyncConnectionPool
 
-# Same variables as the shared .env used by store-consumer
 DB_CONNINFO = make_conninfo(
     host=os.environ.get("POSTGRES_HOST", "postgres"),
     port=os.environ.get("POSTGRES_PORT", "5432"),
@@ -40,11 +39,7 @@ DB_CONNINFO = make_conninfo(
     password=os.environ.get("POSTGRES_PASSWORD", ""),
 )
 
-# Connection pool: reuse connections instead of opening one per request.
-# Autocommit: a single read needs no BEGIN and COMMIT, two round trips to the database.
-# A burst over many experiments starts ~20 reads per process at once; with 4
-# connections they queued in ~5 rounds (80 ms per read while Postgres ran 1-2
-# queries). Total: pods x DB_POOL_MAX, below Postgres' 100 with the consumers.
+#Connection pool: reuse connections instead of opening one per request.
 pool = AsyncConnectionPool(
     DB_CONNINFO,
     min_size=4,
@@ -64,10 +59,7 @@ async def get_pool():
     return pool
 
 
-# Every granian worker is its own process: each writes its values to
-# PROMETHEUS_MULTIPROC_DIR (set in the Dockerfile) and /metrics adds them up.
-# Same buckets as store-consumer's DB histogram; they include the default ones
-# (5 ms ... 2.5 s), so the counts compare with a client-side histogram.
+#Every worker is its own process: each writes its values to PROMETHEUS_MULTIPROC_DIR (set in the Dockerfile) and /metrics adds them up.
 BUCKETS = (0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
 DB_READ = Histogram(
     "rest_api_db_read_seconds",
@@ -88,10 +80,7 @@ ROWS = Counter(
     ["source"],
 )
 
-# One measurement = all sensors with the same measurement_id, and its temperature is
-# their average. store-consumer stores that average when the last sensor reports, so
-# reading an experiment is one index scan in time order. Both endpoints are answered
-# from these rows.
+#One measurement = all sensors with the same measurement_id, and its temperature is their average
 ROWS_SQL = """
     SELECT timestamp, temperature, out_of_range
     FROM measurement_averages
@@ -100,14 +89,11 @@ ROWS_SQL = """
     ORDER BY timestamp
 """
 
-# Clients ask in bursts (the course's tester sends ~70 requests at once, all for one
-# experiment), so one read serves the whole burst: requests that arrive while a read
-# is running wait for it, and its rows are reused for CACHE_TTL_MS. Answers are at
-# most that much older than the database; 0 turns the reuse off (sharing stays).
+
 CACHE_TTL = float(os.environ.get("CACHE_TTL_MS", "200")) / 1000
 MAX_CACHED = 256
-cached = {}  # experiment_id -> Rows
-reading = {}  # experiment_id -> Future of the read in progress
+cached = {}  
+reading = {}  
 
 
 class Rows:
@@ -117,7 +103,6 @@ class Rows:
         self.read_at = time.monotonic()
         self.timestamps = [ts for ts, _, _ in rows]
         self.points = [{"timestamp": ts, "temperature": temp} for ts, temp, _ in rows]
-        # The full answer is built once, on first use, for every request of a burst
         self.all_json = None
         self.out_of_range_json = orjson.dumps(
             [p for p, (_, _, out) in zip(self.points, rows) if out]
@@ -136,7 +121,6 @@ class Rows:
 async def read_rows(experiment_id):
     with DB_READ.labels("experiment").time():
         async with (await get_pool()).connection() as conn:
-            # binary: the floats skip the conversion to text and back
             cur = await conn.execute(ROWS_SQL, {"id": experiment_id}, binary=True)
             return Rows(await cur.fetchall())
 
@@ -158,7 +142,6 @@ async def experiment_rows(experiment_id):
         future.set_result(rows)
     except Exception as error:
         future.set_exception(error)
-        # Marks the error as seen when no other request was waiting for it
         future.exception()
         raise
     finally:
@@ -171,7 +154,6 @@ async def experiment_rows(experiment_id):
 
 
 def number(value):
-    # NaN as in Postgres, where it sorts above every number
     parsed = float(value)
     return math.inf if math.isnan(parsed) else parsed
 
@@ -209,7 +191,6 @@ DATA_ENDPOINTS = {"/temperature": temperature, "/temperature/out-of-range": out_
 
 def metrics(proto):
     registry = REGISTRY
-    # Without the directory (a single process) there is only this process
     if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
         registry = CollectorRegistry()
         multiprocess.MultiProcessCollector(registry)

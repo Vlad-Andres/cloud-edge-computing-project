@@ -20,7 +20,6 @@ metadata:
     app: grafana
 spec:
   replicas: 1
-  # A hostPort pod can't surge next to the old one on the same node
   strategy:
     type: Recreate
   selector:
@@ -32,7 +31,6 @@ spec:
         app: grafana
     spec:
       enableServiceLinks: false
-      # Pinned to the control-plane node, which owns the public IP 18.203.181.249
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -55,7 +53,6 @@ spec:
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
           ports:
-            # hostPort exposes it as 18.203.181.249:3001 (3000 is taken on that node)
             - name: http
               containerPort: 3000
               hostPort: 3001
@@ -64,7 +61,6 @@ spec:
               path: /api/health
               port: http
             periodSeconds: 10
-          # Same paths as monitoring/docker-compose.yml
           volumeMounts:
             - name: data
               mountPath: /var/lib/grafana
@@ -78,7 +74,6 @@ spec:
               mountPath: /var/lib/grafana/dashboards
               readOnly: true
       volumes:
-        # Everything is provisioned from the ConfigMaps, so nothing to keep
         - name: data
           emptyDir: {}
         - name: datasources

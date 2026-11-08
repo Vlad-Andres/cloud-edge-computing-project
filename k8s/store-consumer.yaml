@@ -5,8 +5,7 @@ metadata:
   labels:
     app: store-consumer
 spec:
-  # No replicas: KEDA sets the count (1-3, store-consumer-scaledobject.yaml).
-  # With it, every kubectl apply -k would reset what KEDA chose.
+  # No replicas: KEDA sets the count 
   selector:
     matchLabels:
       app: store-consumer
@@ -16,14 +15,10 @@ spec:
         app: store-consumer
     spec:
       enableServiceLinks: false
-      # Keeps the consumer from running as PID 1, like docker --init. On SIGTERM
-      # it leaves the Kafka group, so scale-downs hand over partitions at once.
       shareProcessNamespace: true
-      # Spread over the nodes when possible, but still schedule when a node is down
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          # Count only pods of the current version, not old ones still shutting down
           matchLabelKeys: [pod-template-hash]
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
@@ -40,7 +35,6 @@ spec:
       containers:
         - name: store-consumer
           image: store-consumer
-          # Own consumer group, so the docker consumers in group16-store keep their partitions
           args: ["experiment", "group16-k8s-store"]
           envFrom:
             - secretRef:
@@ -54,7 +48,6 @@ spec:
             - name: metrics
               containerPort: 9091
           volumeMounts:
-            # The binary reads auth/ca.crt relative to its workdir
             - name: kafka-auth
               mountPath: /usr/src/app/auth
               readOnly: true
