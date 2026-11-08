@@ -1,6 +1,6 @@
 # cloud-edge-computing-project
 
-![architecture](architecture-diagram.png)
+![architecture](diagrams/architecture.png)
 
 On group16, from the repo root, with `.env` and `auth/` present:
 
@@ -14,7 +14,7 @@ On group16, from the repo root, with `.env` and `auth/` present:
 - rest-api/Readme.md: REST API (Python, granian)
 - database/README.md: schema
 - k8s/README.md: manifests, cluster setup, building and pushing images
-- monitoring/grafana/: dashboards, deployed by k8s
+- k8s/monitoring/: Prometheus, Grafana and the exporters; dashboards in k8s/monitoring/grafana/dashboards/
 - scripts/: benchmark, retention cleanup, Kafka offset reset
 
 ## Data retention

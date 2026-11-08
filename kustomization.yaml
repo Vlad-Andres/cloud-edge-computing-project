@@ -45,11 +45,11 @@ configMapGenerator:
       - k8s/monitoring/prometheus.yml
   - name: grafana-datasources
     files:
-      - monitoring/grafana/provisioning/datasources/prometheus.yml
+      - k8s/monitoring/grafana/provisioning/datasources/prometheus.yml
   - name: grafana-dashboard-providers
     files:
-      - monitoring/grafana/provisioning/dashboards/dashboards.yml
+      - k8s/monitoring/grafana/provisioning/dashboards/dashboards.yml
   - name: grafana-dashboards
     files:
-      - monitoring/grafana/dashboards/store-consumer.json
-      - monitoring/grafana/dashboards/deployment-cost.json
+      - k8s/monitoring/grafana/dashboards/store-consumer.json
+      - k8s/monitoring/grafana/dashboards/deployment-cost.json
